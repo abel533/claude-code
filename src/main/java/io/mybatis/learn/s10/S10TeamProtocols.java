@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mybatis.learn.core.AgentRunner;
 import io.mybatis.learn.core.team.MessageBus;
 import io.mybatis.learn.core.tools.*;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.annotation.Tool;
@@ -39,7 +40,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class S10TeamProtocols implements CommandLineRunner {
 
     @Autowired
+    private AiConfig aiConfig;
     private ChatModel chatModel;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        this.chatModel = aiConfig.get();
+    }
 
     @Override
     public void run(String... args) throws Exception {
@@ -48,7 +55,7 @@ public class S10TeamProtocols implements CommandLineRunner {
 
         MessageBus bus = new MessageBus(teamDir.resolve("inbox"));
         ProtocolTracker tracker = new ProtocolTracker(bus);
-        S10TeammateManager team = new S10TeammateManager(chatModel, bus, tracker, teamDir);
+        S10TeammateManager team = new S10TeammateManager(aiConfig, bus, tracker, teamDir);
         S10LeadTools leadTools = new S10LeadTools(bus, team, tracker);
         ObjectMapper mapper = new ObjectMapper();
 
@@ -91,6 +98,7 @@ public class S10TeamProtocols implements CommandLineRunner {
      *   3. plan_approval工具 - 提交计划到lead收件箱
      */
     static class S10TeammateManager {
+        private final AiConfig aiConfig;
         private final ChatModel chatModel;
         private final MessageBus bus;
         private final ProtocolTracker tracker;
@@ -98,9 +106,10 @@ public class S10TeamProtocols implements CommandLineRunner {
         private final ObjectMapper mapper = new ObjectMapper();
         private Map<String, Object> config;
 
-        S10TeammateManager(ChatModel chatModel, MessageBus bus,
+        S10TeammateManager(AiConfig aiConfig, MessageBus bus,
                            ProtocolTracker tracker, Path teamDir) {
-            this.chatModel = chatModel;
+            this.aiConfig = aiConfig;
+            this.chatModel = aiConfig.get();
             this.bus = bus;
             this.tracker = tracker;
             this.configPath = teamDir.resolve("config.json");

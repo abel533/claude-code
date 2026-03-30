@@ -1,6 +1,7 @@
 package io.mybatis.learn.s12;
 
 import io.mybatis.learn.core.AgentRunner;
+import io.mybatis.learn.core.config.AiConfig;
 import io.mybatis.learn.core.tools.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -31,7 +32,13 @@ import java.nio.file.Path;
 public class S12WorktreeIsolation implements CommandLineRunner {
 
     @Autowired
+    private AiConfig aiConfig;
     private ChatModel chatModel;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        this.chatModel = aiConfig.get();
+    }
 
     @Override
     public void run(String... args) throws Exception {

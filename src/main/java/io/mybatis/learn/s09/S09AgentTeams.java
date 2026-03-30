@@ -5,6 +5,7 @@ import io.mybatis.learn.core.AgentRunner;
 import io.mybatis.learn.core.team.MessageBus;
 import io.mybatis.learn.core.tools.*;
 import org.springframework.ai.chat.client.ChatClient;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -34,7 +35,13 @@ import java.util.List;
 public class S09AgentTeams implements CommandLineRunner {
 
     @Autowired
+    private AiConfig aiConfig;
     private ChatModel chatModel;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        this.chatModel = aiConfig.get();
+    }
 
     @Override
     public void run(String... args) throws Exception {
@@ -42,7 +49,7 @@ public class S09AgentTeams implements CommandLineRunner {
         Path teamDir = workDir.resolve(".team");
 
         MessageBus bus = new MessageBus(teamDir.resolve("inbox"));
-        TeammateManager team = new TeammateManager(chatModel, bus, teamDir);
+        TeammateManager team = new TeammateManager(aiConfig, bus, teamDir);
         LeadTools leadTools = new LeadTools(bus, team);
         ObjectMapper mapper = new ObjectMapper();
 

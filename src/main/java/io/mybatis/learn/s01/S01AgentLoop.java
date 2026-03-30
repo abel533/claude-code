@@ -1,6 +1,7 @@
 package io.mybatis.learn.s01;
 
 import io.mybatis.learn.core.AgentRunner;
+import io.mybatis.learn.core.config.AiConfig;
 import io.mybatis.learn.core.tools.BashTool;
 import io.mybatis.learn.core.tools.ToolCallLoggingAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
@@ -48,10 +49,10 @@ public class S01AgentLoop implements CommandLineRunner {
      * TIP: Python 版在模块级创建 client = Anthropic() 和 MODEL。
      * Spring AI 通过自动配置注入 ChatModel，再用 builder 构建 ChatClient。
      */
-    public S01AgentLoop(ChatModel chatModel) {
+    public S01AgentLoop(AiConfig aiConfig) {
         // TIP: Python 的 SYSTEM prompt 对应 ChatClient 的 defaultSystem
         // TIP: Python 的 TOOLS 数组 + TOOL_HANDLERS 对应 Spring AI 的 @Tool 注解 + defaultTools
-        this.chatClient = ChatClient.builder(chatModel)
+        this.chatClient = ChatClient.builder(aiConfig.get())
                 .defaultSystem("You are a coding agent at " + System.getProperty("user.dir")
                         + ". Use bash to solve tasks. Act, don't explain.")
                 .defaultTools(new BashTool())

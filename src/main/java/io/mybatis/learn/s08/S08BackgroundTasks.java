@@ -1,6 +1,7 @@
 package io.mybatis.learn.s08;
 
 import io.mybatis.learn.core.AgentRunner;
+import io.mybatis.learn.core.config.AiConfig;
 import io.mybatis.learn.core.tools.BashTool;
 import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
@@ -27,10 +28,12 @@ import java.util.stream.Collectors;
 @SpringBootApplication(scanBasePackages = "io.mybatis.learn.core")
 public class S08BackgroundTasks implements CommandLineRunner {
 
+    private final AiConfig aiConfig;
     private final ChatModel chatModel;
 
-    public S08BackgroundTasks(ChatModel chatModel) {
-        this.chatModel = chatModel;
+    public S08BackgroundTasks(AiConfig aiConfig) {
+        this.aiConfig = aiConfig;
+        this.chatModel = aiConfig.get();
     }
 
     @Override

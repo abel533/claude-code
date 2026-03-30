@@ -6,7 +6,7 @@ import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
 import io.mybatis.learn.core.tools.WriteFileTool;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -45,8 +45,8 @@ public class S02ToolUse implements CommandLineRunner {
      * TIP: Python 版在模块级定义 4 个工具函数 + TOOL_HANDLERS 字典。
      * Spring AI 只需创建工具对象并传入 defaultTools()，框架自动完成注册和分派。
      */
-    public S02ToolUse(ChatModel chatModel) {
-        this.chatClient = ChatClient.builder(chatModel)
+    public S02ToolUse(AiConfig aiConfig) {
+        this.chatClient = ChatClient.builder(aiConfig.get())
                 .defaultSystem("You are a coding agent at " + System.getProperty("user.dir")
                         + ". Use tools to solve tasks. Act, don't explain.")
                 .defaultTools(

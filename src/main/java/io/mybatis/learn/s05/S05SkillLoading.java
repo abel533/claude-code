@@ -6,7 +6,7 @@ import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
 import io.mybatis.learn.core.tools.WriteFileTool;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -47,7 +47,7 @@ public class S05SkillLoading implements CommandLineRunner {
 
     private final ChatClient chatClient;
 
-    public S05SkillLoading(ChatModel chatModel) {
+    public S05SkillLoading(AiConfig aiConfig) {
         Path skillsDir = Path.of(System.getProperty("user.dir"), "skills");
         SkillLoader skillLoader = new SkillLoader(skillsDir);
 
@@ -57,7 +57,7 @@ public class S05SkillLoading implements CommandLineRunner {
                 + "Skills available:\n"
                 + skillLoader.getDescriptions();
 
-        this.chatClient = ChatClient.builder(chatModel)
+        this.chatClient = ChatClient.builder(aiConfig.get())
                 .defaultSystem(system)
                 .defaultTools(
                         new BashTool(),

@@ -10,6 +10,7 @@ import io.mybatis.learn.s05.SkillLoader;
 import io.mybatis.learn.s07.TaskManager;
 import io.mybatis.learn.s08.BackgroundManager;
 import io.mybatis.learn.s10.ProtocolTracker;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.annotation.Tool;
@@ -54,7 +55,13 @@ import java.util.*;
 public class SFullAgent implements CommandLineRunner {
 
     @Autowired
+    private AiConfig aiConfig;
     private ChatModel chatModel;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        this.chatModel = aiConfig.get();
+    }
 
     @Override
     public void run(String... args) throws Exception {
@@ -67,7 +74,7 @@ public class SFullAgent implements CommandLineRunner {
         TodoManager todos = new TodoManager();
 
         // S04: 子Agent委派
-        SubagentTool subagent = new SubagentTool(chatModel);
+        SubagentTool subagent = new SubagentTool(aiConfig);
 
         // S05: 技能加载
         SkillLoader skills = new SkillLoader(workDir.resolve("skills"));

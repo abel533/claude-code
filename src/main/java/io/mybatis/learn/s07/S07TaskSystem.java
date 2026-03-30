@@ -6,7 +6,7 @@ import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
 import io.mybatis.learn.core.tools.WriteFileTool;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -28,11 +28,11 @@ public class S07TaskSystem implements CommandLineRunner {
 
     private final ChatClient chatClient;
 
-    public S07TaskSystem(ChatModel chatModel) {
+    public S07TaskSystem(AiConfig aiConfig) {
         Path tasksDir = Path.of(System.getProperty("user.dir"), ".tasks");
         TaskManager taskManager = new TaskManager(tasksDir);
 
-        this.chatClient = ChatClient.builder(chatModel)
+        this.chatClient = ChatClient.builder(aiConfig.get())
                 .defaultSystem("You are a coding agent at " + System.getProperty("user.dir")
                         + ". Use task tools to plan and track work.")
                 .defaultTools(

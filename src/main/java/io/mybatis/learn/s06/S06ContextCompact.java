@@ -7,6 +7,7 @@ import io.mybatis.learn.core.tools.ReadFileTool;
 import io.mybatis.learn.core.tools.WriteFileTool;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -43,16 +44,18 @@ import java.nio.file.Path;
 @SpringBootApplication(scanBasePackages = "io.mybatis.learn.core")
 public class S06ContextCompact implements CommandLineRunner {
 
+    private final AiConfig aiConfig;
     private final ChatModel chatModel;
 
-    public S06ContextCompact(ChatModel chatModel) {
-        this.chatModel = chatModel;
+    public S06ContextCompact(AiConfig aiConfig) {
+        this.aiConfig = aiConfig;
+        this.chatModel = aiConfig.get();
     }
 
     @Override
     public void run(String... args) {
         Path workDir = Path.of(System.getProperty("user.dir"));
-        ContextCompactor compactor = new ContextCompactor(chatModel, workDir);
+        ContextCompactor compactor = new ContextCompactor(aiConfig, workDir);
         CompactTool compactTool = new CompactTool(compactor);
 
         String baseSystem = "You are a coding agent at " + workDir + ". Use tools to solve tasks.";

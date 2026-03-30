@@ -12,11 +12,11 @@ spring:
           model: MiniMax-M2.7
     retry:
       max-attempts: 1            # 禁用 Spring AI 全局重试
+    chat:
+      client:
+        enabled: false
 
-app:
-  agent:
-    max-retries: 3               # AgentRunner 层最大重试次数
-    retry-delay: 2                # 重试间隔（秒）
+
 
 # 如果使用openai 接口格式,使用下面的配置
 #spring:
@@ -27,6 +27,16 @@ app:
 #      chat:
 #        options:
 #          model: ${AI_MODEL:gpt-4o}
+
+
+app:
+  agent:
+    max-retries: 3               # AgentRunner 层最大重试次数
+    retry-delay: 2                # 重试间隔（秒）
+
+# AI Provider 选择开关：anthropic / openai
+ai:
+  provider: anthropic
 
 # 日志级别
 logging:

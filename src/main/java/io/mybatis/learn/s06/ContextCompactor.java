@@ -1,6 +1,7 @@
 package io.mybatis.learn.s06;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 
@@ -31,7 +32,7 @@ public class ContextCompactor {
     private static final int KEEP_RECENT = 3;
 
     private final Path transcriptDir;
-    private final ChatModel chatModel;
+    private final AiConfig aiConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -43,8 +44,8 @@ public class ContextCompactor {
     public record ConversationTurn(String role, String content) {
     }
 
-    public ContextCompactor(ChatModel chatModel, Path workDir) {
-        this.chatModel = chatModel;
+    public ContextCompactor(AiConfig aiConfig, Path workDir) {
+        this.aiConfig = aiConfig;
         this.transcriptDir = workDir.resolve(".transcripts");
     }
 
@@ -129,7 +130,7 @@ public class ContextCompactor {
                 conversationText = conversationText.substring(0, 80000);
             }
 
-            ChatClient summaryClient = ChatClient.builder(chatModel).build();
+            ChatClient summaryClient = ChatClient.builder(aiConfig.get()).build();
             String summary = summaryClient.prompt()
                     .user("Summarize this conversation for continuity. Include: "
                             + "1) What was accomplished, 2) Current state, 3) Key decisions made. "

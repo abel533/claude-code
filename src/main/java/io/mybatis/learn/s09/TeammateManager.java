@@ -9,6 +9,7 @@ import io.mybatis.learn.core.tools.ReadFileTool;
 import io.mybatis.learn.core.tools.WriteFileTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.annotation.Tool;
@@ -35,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TeammateManager {
     private static final Logger log = LoggerFactory.getLogger(TeammateManager.class);
 
+    private final AiConfig aiConfig;
     private final ChatModel chatModel;
     private final MessageBus bus;
     private final Path configPath;
@@ -42,8 +44,9 @@ public class TeammateManager {
     private Map<String, Object> config;
     private final Map<String, Thread> threads = new ConcurrentHashMap<>();
 
-    public TeammateManager(ChatModel chatModel, MessageBus bus, Path teamDir) {
-        this.chatModel = chatModel;
+    public TeammateManager(AiConfig aiConfig, MessageBus bus, Path teamDir) {
+        this.aiConfig = aiConfig;
+        this.chatModel = aiConfig.get();
         this.bus = bus;
         this.configPath = teamDir.resolve("config.json");
         try {

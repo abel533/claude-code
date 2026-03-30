@@ -1,5 +1,6 @@
 package io.mybatis.learn.s04;
 
+import io.mybatis.learn.core.config.AiConfig;
 import io.mybatis.learn.core.tools.BashTool;
 import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
@@ -23,11 +24,11 @@ import org.springframework.ai.tool.annotation.ToolParam;
 public class SubagentTool {
     private static final Logger log = LoggerFactory.getLogger(SubagentTool.class);
 
-    private final ChatModel chatModel;
+    private final AiConfig aiConfig;
     private final String workDir;
 
-    public SubagentTool(ChatModel chatModel) {
-        this.chatModel = chatModel;
+    public SubagentTool(AiConfig aiConfig) {
+        this.aiConfig = aiConfig;
         this.workDir = System.getProperty("user.dir");
     }
 
@@ -50,7 +51,7 @@ public class SubagentTool {
 
         // 创建全新的 ChatClient —— 这就是"上下文隔离"的全部
         // TIP: 对应 Python 的 sub_messages = [] —— 空的消息列表就是隔离
-        ChatClient subClient = ChatClient.builder(chatModel)
+        ChatClient subClient = ChatClient.builder(aiConfig.get())
                 .defaultSystem("You are a coding subagent at " + workDir
                         + ". Complete the given task, then summarize your findings.")
                 .defaultTools(

@@ -5,6 +5,7 @@ import io.mybatis.learn.core.AgentRunner;
 import io.mybatis.learn.core.team.MessageBus;
 import io.mybatis.learn.core.tools.*;
 import io.mybatis.learn.s10.ProtocolTracker;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.annotation.Tool;
@@ -43,7 +44,13 @@ public class S11AutonomousAgents implements CommandLineRunner {
     private static final int IDLE_TIMEOUT = 60;
 
     @Autowired
+    private AiConfig aiConfig;
     private ChatModel chatModel;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        this.chatModel = aiConfig.get();
+    }
 
     @Override
     public void run(String... args) throws Exception {
@@ -54,7 +61,7 @@ public class S11AutonomousAgents implements CommandLineRunner {
         MessageBus bus = new MessageBus(teamDir.resolve("inbox"));
         ProtocolTracker tracker = new ProtocolTracker(bus);
         AutonomousTeammateManager team = new AutonomousTeammateManager(
-                chatModel, bus, tracker, teamDir, tasksDir);
+                aiConfig, bus, tracker, teamDir, tasksDir);
         AutonomousLeadTools leadTools = new AutonomousLeadTools(bus, team, tracker, tasksDir);
         ObjectMapper mapper = new ObjectMapper();
 
@@ -146,6 +153,7 @@ public class S11AutonomousAgents implements CommandLineRunner {
      *   idle工具通过AtomicBoolean标志通知外部循环进入IDLE阶段。
      */
     static class AutonomousTeammateManager {
+        private final AiConfig aiConfig;
         private final ChatModel chatModel;
         private final MessageBus bus;
         private final ProtocolTracker tracker;
@@ -154,9 +162,10 @@ public class S11AutonomousAgents implements CommandLineRunner {
         private final ObjectMapper mapper = new ObjectMapper();
         private Map<String, Object> config;
 
-        AutonomousTeammateManager(ChatModel chatModel, MessageBus bus,
+        AutonomousTeammateManager(AiConfig aiConfig, MessageBus bus,
                                   ProtocolTracker tracker, Path teamDir, Path tasksDir) {
-            this.chatModel = chatModel;
+            this.aiConfig = aiConfig;
+            this.chatModel = aiConfig.get();
             this.bus = bus;
             this.tracker = tracker;
             this.tasksDir = tasksDir;

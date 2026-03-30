@@ -6,7 +6,7 @@ import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
 import io.mybatis.learn.core.tools.WriteFileTool;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
+import io.mybatis.learn.core.config.AiConfig;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -42,8 +42,8 @@ public class S04Subagent implements CommandLineRunner {
 
     private final ChatClient chatClient;
 
-    public S04Subagent(ChatModel chatModel) {
-        this.chatClient = ChatClient.builder(chatModel)
+    public S04Subagent(AiConfig aiConfig) {
+        this.chatClient = ChatClient.builder(aiConfig.get())
                 .defaultSystem("You are a coding agent at " + System.getProperty("user.dir")
                         + ". Use the task tool to delegate exploration or subtasks.")
                 .defaultTools(
@@ -51,7 +51,7 @@ public class S04Subagent implements CommandLineRunner {
                         new ReadFileTool(),
                         new WriteFileTool(),
                         new EditFileTool(),
-                        new SubagentTool(chatModel)  // 父 Agent 独有的 task 工具
+                        new SubagentTool(aiConfig)  // 父 Agent 独有的 task 工具
                 )
                 .build();
     }

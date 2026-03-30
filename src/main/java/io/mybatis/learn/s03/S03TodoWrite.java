@@ -1,6 +1,7 @@
 package io.mybatis.learn.s03;
 
 import io.mybatis.learn.core.AgentRunner;
+import io.mybatis.learn.core.config.AiConfig;
 import io.mybatis.learn.core.tools.BashTool;
 import io.mybatis.learn.core.tools.EditFileTool;
 import io.mybatis.learn.core.tools.ReadFileTool;
@@ -45,11 +46,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication(scanBasePackages = "io.mybatis.learn.core")
 public class S03TodoWrite implements CommandLineRunner {
 
+    private final AiConfig aiConfig;
     private final ChatModel chatModel;
     private final TodoManager todoManager = new TodoManager();
 
-    public S03TodoWrite(ChatModel chatModel) {
-        this.chatModel = chatModel;
+    public S03TodoWrite(AiConfig aiConfig) {
+        this.aiConfig = aiConfig;
+        this.chatModel = aiConfig.get();
     }
 
     @Override
