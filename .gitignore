@@ -231,3 +231,6 @@ analysis/
 analysis_progress.md
 TODO.md
 .test-workspace/
+
+# Spring Boot local config (contains sensitive API keys)
+src/main/resources/application-local.yml

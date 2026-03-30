@@ -1,0 +1,37 @@
+## 复制本文件 重命名为 application-local.yml, 然后修改你的key, application-local.yml 不会被git追踪.
+
+# 如果使用anthropic格式的接口的配置,使用下面的配置.
+spring:
+  ai:
+    anthropic:
+      # API Key - 请替换为你的实际 Key，或通过环境变量 AI_API_KEY 注入  这是minimax demo
+      api-key: ${AI_API_KEY:your-api-key-here}
+      base-url: ${AI_BASE_URL:https://api.minimaxi.com/anthropic}
+      chat:
+        options:
+          model: MiniMax-M2.7
+    retry:
+      max-attempts: 1            # 禁用 Spring AI 全局重试
+
+app:
+  agent:
+    max-retries: 3               # AgentRunner 层最大重试次数
+    retry-delay: 2                # 重试间隔（秒）
+
+# 如果使用openai 接口格式,使用下面的配置
+#spring:
+#  ai:
+#    openai:
+#      api-key: ${AI_API_KEY:sk-xxx}
+#      base-url: ${AI_BASE_URL:https://api.openai.com}
+#      chat:
+#        options:
+#          model: ${AI_MODEL:gpt-4o}
+
+# 日志级别
+logging:
+  level:
+    io.mybatis.learn: DEBUG
+    io.mybatis.learn.core.config.HttpLoggingInterceptor: DEBUG  # HTTP 请求/响应日志，关闭设为 WARN 或删除此行
+    org.springframework.ai.anthropic: DEBUG
+    org.springframework.ai.anthropic.api.AnthropicApi: DEBUG

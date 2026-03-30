@@ -1,3 +1,4 @@
+
 spring:
   ai:
     openai:
@@ -11,6 +12,8 @@ spring:
   threads:
     virtual:
       enabled: true
+  profiles:
+    active: local
 
 # 日志级别
 logging:

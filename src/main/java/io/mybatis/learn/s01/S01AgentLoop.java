@@ -2,8 +2,12 @@ package io.mybatis.learn.s01;
 
 import io.mybatis.learn.core.AgentRunner;
 import io.mybatis.learn.core.tools.BashTool;
+import io.mybatis.learn.core.tools.ToolCallLoggingAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -35,6 +39,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication(scanBasePackages = "io.mybatis.learn.core")
 public class S01AgentLoop implements CommandLineRunner {
 
+    private static final String ANSI_CYAN = "\033[36m";
+    private static final String ANSI_RESET = "\033[0m";
+
     private final ChatClient chatClient;
 
     /**
@@ -48,6 +55,7 @@ public class S01AgentLoop implements CommandLineRunner {
                 .defaultSystem("You are a coding agent at " + System.getProperty("user.dir")
                         + ". Use bash to solve tasks. Act, don't explain.")
                 .defaultTools(new BashTool())
+                .defaultAdvisors(new ToolCallLoggingAdvisor())
                 .build();
     }
 
@@ -66,12 +74,32 @@ public class S01AgentLoop implements CommandLineRunner {
          * Spring AI 的 ChatClient.call() 内部已封装此循环，
          * 包括工具调用检测、自动执行、结果回传，直到模型返回最终文本。
          */
-        AgentRunner.interactive("s01", userMessage ->
-                chatClient.prompt()
-                        .user(userMessage)
-                        .call()
-                        .content()
-        );
+        AgentRunner.interactive("s01", userMessage -> {
+            ChatResponse response = chatClient.prompt()
+                    .user(userMessage)
+                    .call()
+                    .chatResponse();
+
+            StringBuilder textResponse = new StringBuilder();
+            for (Generation gen : response.getResults()) {
+                AssistantMessage msg = gen.getOutput();
+                if (msg.getMetadata().containsKey("signature")
+                        || msg.getMetadata().containsKey("thinking")) {
+                    // thinking block
+                    String thinking = msg.getText();
+                    if (thinking != null && !thinking.isBlank()) {
+                        System.out.printf("%s💭 Thinking: %s%s%n", ANSI_CYAN, thinking, ANSI_RESET);
+                    }
+                } else if (msg.getText() != null && !msg.getText().isBlank()) {
+                    // text block
+                    if (textResponse.length() > 0) {
+                        textResponse.append("\n");
+                    }
+                    textResponse.append(msg.getText());
+                }
+            }
+            return textResponse.length() > 0 ? textResponse.toString() : null;
+        });
     }
 
     public static void main(String[] args) {

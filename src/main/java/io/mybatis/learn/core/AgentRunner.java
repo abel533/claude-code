@@ -1,5 +1,6 @@
 package io.mybatis.learn.core;
 
+import io.mybatis.learn.core.config.ErrorHandlingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +18,19 @@ public class AgentRunner {
     private static final String ANSI_CYAN = "\033[36m";
     private static final String ANSI_GREEN = "\033[32m";
     private static final String ANSI_RED = "\033[31m";
+    private static final String ANSI_YELLOW = "\033[33m";
     private static final String ANSI_RESET = "\033[0m";
+    private static int maxRetries = 3;
+    private static int retryDelaySeconds = 2;
+
+    static {
+        try {
+            maxRetries = Integer.parseInt(System.getProperty("app.agent.max-retries", "3"));
+            retryDelaySeconds = Integer.parseInt(System.getProperty("app.agent.retry-delay", "2"));
+        } catch (NumberFormatException e) {
+            // 使用默认值
+        }
+    }
 
     /**
      * 启动交互式 REPL 循环。
@@ -52,13 +65,68 @@ public class AgentRunner {
                     printAssistantResponse(response);
                 }
             } catch (Exception e) {
-                log.warn("处理输入失败，prefix={}, error={}", prefix, e.getMessage());
-                printAssistantError(e.getMessage());
+                handleException(prefix, input, handler, e);
             }
             System.out.println();
         }
         log.info("交互循环结束，prefix={}", prefix);
         System.out.println("Bye!");
+    }
+
+    private static void handleException(String prefix, String input,
+                                        Function<String, String> handler, Exception e) {
+        ErrorHandlingInterceptor.AgentApiException apiEx =
+                e instanceof ErrorHandlingInterceptor.AgentApiException
+                    ? (ErrorHandlingInterceptor.AgentApiException) e
+                    : null;
+
+        if (apiEx != null && apiEx.getErrorType().isRetryable()) {
+            for (int i = 0; i < maxRetries; i++) {
+                System.out.printf("%s🔄 %s，正在重试 (%d/%d)...%s%n",
+                        ANSI_YELLOW, getErrorHint(apiEx.getErrorType()), i + 1, maxRetries, ANSI_RESET);
+                try {
+                    Thread.sleep(retryDelaySeconds * 1000L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                try {
+                    String response = handler.apply(input);
+                    if (response != null && !response.isBlank()) {
+                        printAssistantResponse(response);
+                    }
+                    return;
+                } catch (Exception retryEx) {
+                    ErrorHandlingInterceptor.AgentApiException retryApiEx =
+                            retryEx instanceof ErrorHandlingInterceptor.AgentApiException
+                                ? (ErrorHandlingInterceptor.AgentApiException) retryEx
+                                : null;
+                    if (retryApiEx != null && !retryApiEx.getErrorType().isRetryable()) {
+                        break;
+                    }
+                }
+            }
+            log.warn("处理输入失败，已重试多次，prefix={}, error={}", prefix, e.getMessage());
+            printAssistantError("请求失败，请稍后重试。错误: " + truncate(e.getMessage(), 200));
+        } else {
+            String hint = apiEx != null ? getErrorHint(apiEx.getErrorType()) : "请求失败";
+            log.warn("处理输入失败，prefix={}, error={}", prefix, e.getMessage());
+            printAssistantError(hint + ": " + truncate(e.getMessage(), 200));
+        }
+    }
+
+    private static String getErrorHint(ErrorHandlingInterceptor.ErrorType type) {
+        switch (type) {
+            case TIMEOUT:      return "请求超时";
+            case IO_ERROR:     return "网络错误";
+            case SERVER_ERROR: return "服务器错误";
+            case AUTH_FAILED:  return "API Key 无效，请检查配置";
+            case FORBIDDEN:    return "无访问权限，请检查权限配置";
+            case NOT_FOUND:    return "请求资源不存在";
+            case RATE_LIMITED: return "API 请求过于频繁，请稍后重试";
+            case CLIENT_ERROR: return "请求错误";
+            default:          return "请求失败";
+        }
     }
 
     private static void printAssistantResponse(String response) {

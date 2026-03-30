@@ -83,6 +83,7 @@ public class BashTool {
             if (log.isDebugEnabled()) {
                 System.out.printf("✅ 工具完成 [Bash] 输出 %d 字符%n", output.length());
             }
+            System.out.println(output);
             if (output.isEmpty()) return "(no output)";
             return AgentRunner.truncate(output, MAX_OUTPUT_LENGTH);
         } catch (Exception e) {
