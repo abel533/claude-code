@@ -19,6 +19,7 @@ import reactor.core.publisher.Flux;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Agent 循环 —— 对应 claude-code/src/core/query.ts 的 agent loop。
@@ -32,7 +33,7 @@ import java.util.function.Consumer;
  * <ol>
  *   <li>构建 Prompt（消息历史 + 系统提示 + 工具定义）</li>
  *   <li>调用 ChatModel.call() 或 ChatModel.stream()</li>
- *   <li>检查工具调用 → 执行工具 → 结果回传</li>
+ *   <li>检查工具调用 → 权限确认 → 执行工具 → 结果回传</li>
  *   <li>循环直到无工具调用或达到最大迭代</li>
  * </ol>
  */
@@ -62,6 +63,12 @@ public class AgentLoop {
     /** 流式输出开始回调：通知 UI 停止 spinner */
     private Runnable onStreamStart;
 
+    /** 权限确认回调：危险操作前请求用户确认（返回 true 表示允许） */
+    private Function<PermissionRequest, Boolean> onPermissionRequest;
+
+    /** Thinking 内容回调：显示 AI 的思考过程 */
+    private Consumer<String> onThinkingContent;
+
     public AgentLoop(ChatModel chatModel, ToolRegistry toolRegistry,
                      ToolContext toolContext, String systemPrompt) {
         this(chatModel, toolRegistry, toolContext, systemPrompt, new TokenTracker());
@@ -87,6 +94,14 @@ public class AgentLoop {
 
     public void setOnStreamStart(Runnable onStreamStart) {
         this.onStreamStart = onStreamStart;
+    }
+
+    public void setOnPermissionRequest(Function<PermissionRequest, Boolean> onPermissionRequest) {
+        this.onPermissionRequest = onPermissionRequest;
+    }
+
+    public void setOnThinkingContent(Consumer<String> onThinkingContent) {
+        this.onThinkingContent = onThinkingContent;
     }
 
     // ==================== 阻塞模式 ====================
@@ -187,6 +202,9 @@ public class AgentLoop {
             completionTokens = usage.getCompletionTokens();
         }
 
+        // 尝试提取 thinking 内容（Anthropic extended thinking）
+        extractThinkingContent(response);
+
         return new IterationResult(response.getResult().getOutput(), promptTokens, completionTokens);
     }
 
@@ -251,6 +269,7 @@ public class AgentLoop {
     }
 
     /** 执行工具调用列表并将结果加入消息历史 */
+    @SuppressWarnings("unchecked")
     private void executeToolCalls(List<AssistantMessage.ToolCall> toolCalls,
                                   List<ToolCallback> callbacks) {
         List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
@@ -267,7 +286,27 @@ public class AgentLoop {
             String result;
             ToolCallbackAdapter adapter = findCallbackByName(callbacks, toolName);
             if (adapter != null) {
-                result = adapter.call(toolArgs);
+                // 权限确认：非只读工具需要用户确认
+                boolean permitted = true;
+                if (!adapter.getTool().isReadOnly() && onPermissionRequest != null) {
+                    try {
+                        Map<String, Object> parsedArgs = MAPPER.readValue(toolArgs, Map.class);
+                        String activity = adapter.getTool().activityDescription(parsedArgs);
+                        PermissionRequest req = new PermissionRequest(toolName, toolArgs, activity);
+                        permitted = onPermissionRequest.apply(req);
+                    } catch (Exception e) {
+                        // JSON 解析失败时仍然请求确认
+                        PermissionRequest req = new PermissionRequest(toolName, toolArgs, "执行 " + toolName);
+                        permitted = onPermissionRequest.apply(req);
+                    }
+                }
+
+                if (permitted) {
+                    result = adapter.call(toolArgs);
+                } else {
+                    result = "Permission denied: 用户拒绝了此操作";
+                    log.info("[{}] 用户拒绝工具执行", toolName);
+                }
             } else {
                 result = "Error: Unknown tool '" + toolName + "'";
                 log.warn("未知工具: {}", toolName);
@@ -313,6 +352,11 @@ public class AgentLoop {
         return chatModel;
     }
 
+    /** 获取工具上下文（用于注册回调） */
+    public ToolContext getToolContext() {
+        return toolContext;
+    }
+
     /** 重置历史（保留系统提示词） */
     public void reset() {
         messageHistory.clear();
@@ -327,6 +371,51 @@ public class AgentLoop {
 
     /** 单次迭代结果 */
     private record IterationResult(AssistantMessage assistant, long promptTokens, long completionTokens) {}
+
+    /**
+     * 从 ChatResponse 中尝试提取 thinking 内容。
+     * <p>
+     * Anthropic 的 extended thinking 功能会在响应中包含思考过程。
+     * Spring AI 可能将其放在 metadata 中或作为独立的消息属性。
+     */
+    private void extractThinkingContent(ChatResponse response) {
+        if (onThinkingContent == null) return;
+
+        try {
+            // 方式1: 检查 response metadata 中的 thinking 字段
+            if (response.getMetadata() != null) {
+                var metadata = response.getMetadata();
+                // Spring AI 可能在 metadata 中存储 thinking 内容
+                // 不同版本可能有不同的 key
+                if (metadata instanceof Map<?, ?> metaMap) {
+                    Object thinking = metaMap.get("thinking");
+                    if (thinking instanceof String thinkText && !thinkText.isBlank()) {
+                        onThinkingContent.accept(thinkText);
+                        return;
+                    }
+                }
+            }
+
+            // 方式2: 检查 AssistantMessage 的 metadata
+            if (response.getResult() != null && response.getResult().getOutput() != null) {
+                var output = response.getResult().getOutput();
+                var msgMeta = output.getMetadata();
+                if (msgMeta != null) {
+                    // 尝试获取 thinking 相关的元数据
+                    Object thinking = msgMeta.get("thinking");
+                    if (thinking instanceof String thinkText && !thinkText.isBlank()) {
+                        onThinkingContent.accept(thinkText);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // thinking 提取失败不影响主流程
+            log.debug("Thinking 内容提取异常（可忽略）: {}", e.getMessage());
+        }
+    }
+
+    /** 权限确认请求 */
+    public record PermissionRequest(String toolName, String arguments, String activityDescription) {}
 
     /** 工具事件，用于 UI 展示 */
     public record ToolEvent(String toolName, Phase phase, String arguments, String result) {

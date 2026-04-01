@@ -56,7 +56,9 @@ public class AppConfig {
                 new WebFetchTool(),
                 new TodoWriteTool(),
                 new AgentTool(),
-                new NotebookEditTool()
+                new NotebookEditTool(),
+                new WebSearchTool(),
+                new AskUserQuestionTool()
         );
         return registry;
     }
@@ -75,6 +77,11 @@ public class AppConfig {
                 new InitCommand(),
                 new ConfigCommand(),
                 new HistoryCommand(),
+                new DiffCommand(),
+                new VersionCommand(),
+                new SkillsCommand(),
+                new MemoryCommand(),
+                new CopyCommand(),
                 new ExitCommand()
         );
         return registry;

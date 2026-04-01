@@ -7,6 +7,7 @@ import com.claudecode.console.*;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.core.ConversationPersistence;
 import com.claudecode.tool.ToolRegistry;
+import com.claudecode.tool.impl.AskUserQuestionTool;
 import org.jline.reader.*;
 import org.jline.reader.impl.DefaultParser;
 import org.jline.terminal.Terminal;
@@ -22,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Scanner;
+import java.util.function.Function;
 
 /**
  * REPL 会话管理器 —— 对应 claude-code/src/REPL.tsx。
@@ -48,10 +50,16 @@ public class ReplSession {
     private final ToolStatusRenderer toolStatusRenderer;
     private final MarkdownRenderer markdownRenderer;
     private final SpinnerAnimation spinner;
+    private final ThinkingRenderer thinkingRenderer;
 
     /** 对话摘要（取第一次用户输入的前40字） */
     private String conversationSummary = "";
     private volatile boolean running = true;
+
+    /** 当前活跃的 LineReader（JLine 模式下用于 AskUser 和权限确认） */
+    private volatile LineReader activeReader;
+    /** 当前活跃的 Scanner（Scanner 模式下用于 AskUser 和权限确认） */
+    private volatile Scanner activeScanner;
 
     public ReplSession(AgentLoop agentLoop,
                        ToolRegistry toolRegistry,
@@ -67,8 +75,20 @@ public class ReplSession {
         this.toolStatusRenderer = new ToolStatusRenderer(out);
         this.markdownRenderer = new MarkdownRenderer(out);
         this.spinner = new SpinnerAnimation(out);
+        this.thinkingRenderer = new ThinkingRenderer(out);
 
         setupAgentCallbacks();
+        setupToolContextCallbacks();
+    }
+
+    /** 注册 ToolContext 回调（AskUser 用户输入） */
+    private void setupToolContextCallbacks() {
+        // 注册 AskUserQuestionTool 所需的用户输入回调
+        var toolContext = agentLoop.getToolContext();
+        if (toolContext != null) {
+            toolContext.set(AskUserQuestionTool.USER_INPUT_CALLBACK,
+                    (Function<String, String>) this::readUserInputDuringAgentLoop);
+        }
     }
 
     /** 注册 AgentLoop 事件回调，驱动控制台 UI 渲染 */
@@ -88,6 +108,18 @@ public class ReplSession {
 
         agentLoop.setOnAssistantMessage(text -> {
             // 阻塞模式回调：流式模式下由 onToken 实时输出，此回调不触发
+        });
+
+        // 权限确认回调：非只读工具执行前请求用户确认
+        agentLoop.setOnPermissionRequest(request -> {
+            spinner.stop();
+            return promptPermission(request);
+        });
+
+        // Thinking 内容回调：显示 AI 思考过程
+        agentLoop.setOnThinkingContent(thinkingText -> {
+            spinner.stop();
+            thinkingRenderer.render(thinkingText);
         });
     }
 
@@ -142,6 +174,9 @@ public class ReplSession {
                     .toAnsi(terminal);
 
             printBanner(terminal);
+
+            // 设置活跃的 reader，供 AskUser 和权限确认使用
+            this.activeReader = reader;
 
             CommandContext cmdContext = new CommandContext(agentLoop, toolRegistry, out, () -> running = false);
 
@@ -212,6 +247,7 @@ public class ReplSession {
         out.println();
 
         Scanner scanner = new Scanner(System.in);
+        this.activeScanner = scanner;
         CommandContext cmdContext = new CommandContext(agentLoop, toolRegistry, out, () -> running = false);
 
         while (running) {
@@ -291,5 +327,93 @@ public class ReplSession {
 
     public void stop() {
         running = false;
+    }
+
+    // ==================== 权限确认 UI ====================
+
+    /**
+     * 显示权限确认提示并等待用户输入。
+     * 用于危险操作（文件写入、bash 执行等）前的安全确认。
+     */
+    private boolean promptPermission(AgentLoop.PermissionRequest request) {
+        out.println();
+        out.println(AnsiStyle.yellow("  ⚠ 权限确认"));
+        out.println("  " + "─".repeat(50));
+        out.println("  " + AnsiStyle.bold("工具: ") + AnsiStyle.cyan(request.toolName()));
+        out.println("  " + AnsiStyle.bold("操作: ") + request.activityDescription());
+
+        // 显示参数摘要（截断过长的参数）
+        String argsPreview = request.arguments();
+        if (argsPreview != null && argsPreview.length() > 200) {
+            argsPreview = argsPreview.substring(0, 200) + "...";
+        }
+        if (argsPreview != null && !argsPreview.isBlank()) {
+            out.println("  " + AnsiStyle.dim("参数: " + argsPreview));
+        }
+
+        out.println("  " + "─".repeat(50));
+        out.print("  " + AnsiStyle.bold("允许执行？") + AnsiStyle.dim(" [Y/n/always] ") + AnsiStyle.BOLD + AnsiStyle.BRIGHT_CYAN + "→ " + AnsiStyle.RESET);
+        out.flush();
+
+        String answer = readLineForPermission();
+        if (answer == null) return false;
+
+        answer = answer.strip().toLowerCase();
+
+        // "always" → 禁用后续权限确认
+        if (answer.equals("always") || answer.equals("a")) {
+            agentLoop.setOnPermissionRequest(null); // 移除权限回调
+            out.println(AnsiStyle.green("  ✓ 已授权所有后续操作"));
+            return true;
+        }
+
+        // 空字符串或 y/yes → 允许
+        if (answer.isEmpty() || answer.equals("y") || answer.equals("yes")) {
+            return true;
+        }
+
+        // 其他输入 → 拒绝
+        out.println(AnsiStyle.red("  ✗ 操作已拒绝"));
+        return false;
+    }
+
+    /** 读取权限确认的用户输入（兼容 JLine 和 Scanner 模式） */
+    private String readLineForPermission() {
+        try {
+            if (activeReader != null) {
+                return activeReader.readLine();
+            } else if (activeScanner != null && activeScanner.hasNextLine()) {
+                return activeScanner.nextLine();
+            }
+        } catch (Exception e) {
+            log.debug("读取权限确认输入异常: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    // ==================== AskUser 工具回调 ====================
+
+    /**
+     * 在 Agent 循环执行过程中读取用户输入。
+     * 被 AskUserQuestionTool 通过 ToolContext 回调使用。
+     */
+    private String readUserInputDuringAgentLoop(String prompt) {
+        spinner.stop();
+        out.print(prompt);
+        out.print("  " + AnsiStyle.BOLD + AnsiStyle.BRIGHT_CYAN + "→ " + AnsiStyle.RESET);
+        out.flush();
+
+        try {
+            if (activeReader != null) {
+                return activeReader.readLine();
+            } else if (activeScanner != null && activeScanner.hasNextLine()) {
+                return activeScanner.nextLine();
+            }
+        } catch (UserInterruptException e) {
+            return "(用户取消)";
+        } catch (Exception e) {
+            log.debug("读取用户输入异常: {}", e.getMessage());
+        }
+        return null;
     }
 }
