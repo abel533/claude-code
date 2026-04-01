@@ -57,6 +57,9 @@ public class ReplSession {
     private String conversationSummary = "";
     private volatile boolean running = true;
 
+    /** 流式输出换行跟踪：工具渲染和流式回调共享，保证缩进一致 */
+    private volatile boolean streamNewLine = false;
+
     /** 当前活跃的 LineReader（JLine 模式下用于 AskUser 和权限确认） */
     private volatile LineReader activeReader;
     /** 当前活跃的 Scanner（Scanner 模式下用于 AskUser 和权限确认） */
@@ -100,8 +103,12 @@ public class ReplSession {
                 case START -> {
                     spinner.stop();
                     toolStatusRenderer.renderStart(event.toolName(), event.arguments());
+                    streamNewLine = true; // 工具渲染输出以 println 结尾
                 }
-                case END -> toolStatusRenderer.renderEnd(event.toolName(), event.result());
+                case END -> {
+                    toolStatusRenderer.renderEnd(event.toolName(), event.result());
+                    streamNewLine = true; // 工具渲染输出以 println 结尾，标记下一个流式 token 需要缩进
+                }
             }
         });
 
@@ -330,19 +337,19 @@ public class ReplSession {
 
             // AI 回复前的 ● 标识（不换行，后续流式文本紧跟其后）
             out.print(AnsiStyle.BRIGHT_CYAN + "  ● " + AnsiStyle.RESET);
+            streamNewLine = false; // 重置换行跟踪
 
             // 流式回调：逐 token 输出到终端，自动在每行开头加缩进
-            final boolean[] isNewLine = {false}; // 跟踪是否刚输出换行符
             String response = agentLoop.runStreaming(input, token -> {
                 for (int i = 0; i < token.length(); i++) {
                     char c = token.charAt(i);
                     if (c == '\n') {
                         out.println();
-                        isNewLine[0] = true;
+                        streamNewLine = true;
                     } else {
-                        if (isNewLine[0]) {
+                        if (streamNewLine) {
                             out.print("    "); // 续行缩进（与 ● 后文本对齐）
-                            isNewLine[0] = false;
+                            streamNewLine = false;
                         }
                         out.print(c);
                     }
