@@ -1,21 +1,25 @@
 spring:
-  # 主配置：使用 Anthropic 原生 API
   ai:
+    # === Anthropic 原生 API 配置 ===
+    # 启用时设置 claude-code.provider=anthropic
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:}
-      base-url: ${ANTHROPIC_BASE_URL:https://open.bigmodel.cn/api/anthropic}
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
       chat:
         options:
-          model: ${AI_MODEL:claude-sonnet-4}
+          model: ${AI_MODEL:claude-sonnet-4-20250514}
           max-tokens: ${AI_MAX_TOKENS:8096}
           temperature: 0.7
-    # 备选：兼容 OpenAI 格式的 API（如自建代理）
+
+    # === OpenAI 兼容 API 配置 ===
+    # 启用时设置 claude-code.provider=openai（默认）
+    # 支持 OpenAI、Azure OpenAI、兼容 API 代理等
     openai:
       api-key: ${AI_API_KEY:}
       base-url: ${AI_BASE_URL:https://api.openai.com}
       chat:
         options:
-          model: ${AI_OPENAI_MODEL:}
+          model: ${AI_OPENAI_MODEL:gpt-4o}
 
   # 不启动 Web 服务器（纯 CLI 模式）
   main:
@@ -26,6 +30,11 @@ spring:
   threads:
     virtual:
       enabled: true
+
+# === Claude Code Java 自定义配置 ===
+claude-code:
+  # API 提供者：openai 或 anthropic
+  provider: ${CLAUDE_CODE_PROVIDER:openai}
 
 # 日志：CLI 模式下只显示 WARN 及以上，保持控制台干净
 logging:

@@ -11,7 +11,18 @@ $env:Path = "D:\Dev\jdk-25\bin;$env:Path"
 $env:MAVEN_OPTS = "--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow"
 
 # === AI API 配置（按需修改） ===
+# 选择 API 提供者：openai（默认）或 anthropic
+# $env:CLAUDE_CODE_PROVIDER = "openai"     # 使用 OpenAI 兼容 API（支持代理）
+# $env:CLAUDE_CODE_PROVIDER = "anthropic"  # 使用 Anthropic 原生 API
+
+# OpenAI 兼容 API 配置（默认）
+# $env:AI_API_KEY = "your-api-key-here"
+# $env:AI_BASE_URL = "https://api.openai.com"
+# $env:AI_OPENAI_MODEL = "gpt-4o"
+
+# Anthropic 原生 API 配置
 # $env:ANTHROPIC_API_KEY = "your-api-key-here"
+# $env:ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 # $env:AI_MODEL = "claude-sonnet-4-20250514"
 
 # === 设置控制台 UTF-8 编码（支持 emoji 等字符） ===

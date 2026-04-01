@@ -1,5 +1,6 @@
 package com.claudecode.repl;
 
+import com.claudecode.config.AppConfig.ProviderInfo;
 import com.claudecode.command.CommandContext;
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.console.*;
@@ -40,6 +41,7 @@ public class ReplSession {
     private final AgentLoop agentLoop;
     private final ToolRegistry toolRegistry;
     private final CommandRegistry commandRegistry;
+    private final ProviderInfo providerInfo;
     private final PrintStream out;
     private final ToolStatusRenderer toolStatusRenderer;
     private final MarkdownRenderer markdownRenderer;
@@ -49,10 +51,12 @@ public class ReplSession {
 
     public ReplSession(AgentLoop agentLoop,
                        ToolRegistry toolRegistry,
-                       CommandRegistry commandRegistry) {
+                       CommandRegistry commandRegistry,
+                       ProviderInfo providerInfo) {
         this.agentLoop = agentLoop;
         this.toolRegistry = toolRegistry;
         this.commandRegistry = commandRegistry;
+        this.providerInfo = providerInfo;
         // 强制使用 UTF-8 编码输出，确保 emoji 等 Unicode 字符在 Windows 终端正常显示
         this.out = new PrintStream(System.out, true, StandardCharsets.UTF_8);
         this.toolStatusRenderer = new ToolStatusRenderer(out);
@@ -163,7 +167,13 @@ public class ReplSession {
     /** 打印启动 Banner（JLine 模式） */
     private void printBanner(Terminal terminal) {
         BannerPrinter.printCompact(out);
-        out.println(AnsiStyle.dim("  Working directory: " + System.getProperty("user.dir")));
+
+        // 显示 API 提供者、模型和 URL
+        out.println(AnsiStyle.dim("  Provider: ") + AnsiStyle.cyan(providerInfo.provider().toUpperCase())
+                + AnsiStyle.dim("  Model: ") + AnsiStyle.cyan(providerInfo.model()));
+        out.println(AnsiStyle.dim("  API URL:  ") + AnsiStyle.cyan(providerInfo.baseUrl()));
+
+        out.println(AnsiStyle.dim("  Work Dir: " + System.getProperty("user.dir")));
         out.println(AnsiStyle.dim("  Tools: " + toolRegistry.size() + " registered"));
 
         boolean isDumb = "dumb".equals(terminal.getType());
@@ -188,7 +198,10 @@ public class ReplSession {
 
     private void startWithScanner() {
         BannerPrinter.printCompact(out);
-        out.println(AnsiStyle.dim("  Working directory: " + System.getProperty("user.dir")));
+        out.println(AnsiStyle.dim("  Provider: ") + AnsiStyle.cyan(providerInfo.provider().toUpperCase())
+                + AnsiStyle.dim("  Model: ") + AnsiStyle.cyan(providerInfo.model()));
+        out.println(AnsiStyle.dim("  API URL:  ") + AnsiStyle.cyan(providerInfo.baseUrl()));
+        out.println(AnsiStyle.dim("  Work Dir: " + System.getProperty("user.dir")));
         out.println(AnsiStyle.dim("  Tools: " + toolRegistry.size() + " registered"));
         out.println(AnsiStyle.dim("  Mode: Scanner (basic input)"));
         out.println();
