@@ -3,8 +3,8 @@ spring:
     # === Anthropic 原生 API 配置 ===
     # 启用时设置 claude-code.provider=anthropic
     anthropic:
-      api-key: ${ANTHROPIC_API_KEY:}
-      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+      api-key: ${AI_API_KEY:}
+      base-url: ${AI_BASE_URL:https://api.anthropic.com}
       chat:
         options:
           model: ${AI_MODEL:claude-sonnet-4-20250514}
@@ -19,7 +19,7 @@ spring:
       base-url: ${AI_BASE_URL:https://api.openai.com}
       chat:
         options:
-          model: ${AI_OPENAI_MODEL:gpt-4o}
+          model: ${AI_MODEL:gpt-4o}
 
   # 不启动 Web 服务器（纯 CLI 模式）
   main:

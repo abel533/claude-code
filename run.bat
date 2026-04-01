@@ -16,15 +16,13 @@ REM 选择 API 提供者：openai（默认）或 anthropic
 REM set CLAUDE_CODE_PROVIDER=openai
 REM set CLAUDE_CODE_PROVIDER=anthropic
 
-REM OpenAI 兼容 API 配置（默认）
+REM 统一环境变量（两种 Provider 通用）
 REM set AI_API_KEY=your-api-key-here
 REM set AI_BASE_URL=https://api.openai.com
-REM set AI_OPENAI_MODEL=gpt-4o
-
-REM Anthropic 原生 API 配置
-REM set ANTHROPIC_API_KEY=your-api-key-here
-REM set ANTHROPIC_BASE_URL=https://api.anthropic.com
-REM set AI_MODEL=claude-sonnet-4-20250514
+REM set AI_MODEL=gpt-4o
+REM
+REM OpenAI 默认:  AI_BASE_URL=https://api.openai.com       AI_MODEL=gpt-4o
+REM Anthropic 默认: AI_BASE_URL=https://api.anthropic.com  AI_MODEL=claude-sonnet-4-20250514
 
 REM === 设置控制台 UTF-8 编码（支持 emoji 等字符） ===
 chcp 65001 >nul 2>&1
