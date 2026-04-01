@@ -97,7 +97,14 @@ public class ReplSession {
 
         try (Terminal terminal = TerminalBuilder.builder()
                 .system(true)
+                .streams(System.in, System.out)
                 .build()) {
+
+            // 检测是否为 dumb 终端并提示
+            boolean isDumb = "dumb".equals(terminal.getType());
+            if (isDumb) {
+                log.info("当前为 dumb 终端模式，建议使用 Windows Terminal / PowerShell / cmd 获得完整体验");
+            }
 
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
@@ -156,9 +163,22 @@ public class ReplSession {
         BannerPrinter.printCompact(out);
         out.println(AnsiStyle.dim("  Working directory: " + System.getProperty("user.dir")));
         out.println(AnsiStyle.dim("  Tools: " + toolRegistry.size() + " registered"));
-        out.println(AnsiStyle.dim("  Terminal: " + terminal.getType()
-                + " (" + terminal.getWidth() + "×" + terminal.getHeight() + ")"));
-        out.println(AnsiStyle.dim("  Tip: Tab to complete commands, ↑↓ to browse history, Ctrl+D to exit"));
+
+        boolean isDumb = "dumb".equals(terminal.getType());
+        int w = terminal.getWidth();
+        int h = terminal.getHeight();
+        String termInfo = terminal.getType();
+        if (w > 0 && h > 0) {
+            termInfo += " (" + w + "×" + h + ")";
+        }
+        out.println(AnsiStyle.dim("  Terminal: " + termInfo));
+
+        if (isDumb) {
+            out.println(AnsiStyle.yellow("  ⚠ Dumb 终端模式：Tab补全和行编辑可能受限"));
+            out.println(AnsiStyle.yellow("    建议在 Windows Terminal / PowerShell / cmd.exe 中运行"));
+        } else {
+            out.println(AnsiStyle.dim("  Tip: Tab to complete commands, ↑↓ to browse history, Ctrl+D to exit"));
+        }
         out.println();
     }
 

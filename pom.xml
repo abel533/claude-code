@@ -63,6 +63,13 @@
             <version>${jline.version}</version>
         </dependency>
 
+        <!-- JLine FFM 终端提供者（JDK 22+，Windows/Linux/Mac 原生终端支持） -->
+        <dependency>
+            <groupId>org.jline</groupId>
+            <artifactId>jline-terminal-ffm</artifactId>
+            <version>${jline.version}</version>
+        </dependency>
+
         <!-- Picocli: CLI 命令解析 -->
         <dependency>
             <groupId>info.picocli</groupId>
@@ -90,7 +97,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <jvmArguments>-Xmx512m -Xms256m</jvmArguments>
+                    <jvmArguments>-Xmx512m -Xms256m --enable-native-access=ALL-UNNAMED</jvmArguments>
                 </configuration>
             </plugin>
             <plugin>

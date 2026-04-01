@@ -30,6 +30,6 @@ public class ExitCommand implements SlashCommand {
         if (context.exitCallback() != null) {
             context.exitCallback().run();
         }
-        return "Goodbye!";
+        return "";
     }
 }
