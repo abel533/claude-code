@@ -267,4 +267,93 @@ public class MarkdownRenderer {
         text = text.replaceAll("\\[(.+?)]\\((.+?)\\)", AnsiStyle.UNDERLINE + "$1" + AnsiStyle.RESET + AnsiStyle.DIM + " ($2)" + AnsiStyle.RESET);
         return text;
     }
+
+    // ==================== 流式 Markdown 渲染 ====================
+
+    /**
+     * 流式渲染状态 —— 跨行追踪代码块等多行结构。
+     * 每次 REPL 对话轮次创建一个新实例。
+     */
+    public static class StreamState {
+        boolean inCodeBlock = false;
+        String codeLang = "";
+    }
+
+    /**
+     * 渲染单行流式文本（无前缀缩进，由调用方处理）。
+     * <p>
+     * 支持：代码块（带语法高亮）、标题、列表、引用、行内格式（粗体/斜体/代码）。
+     * 代码块状态通过 {@link StreamState} 跨行维护。
+     *
+     * @param line  一行完整文本（不含换行符）
+     * @param state 跨行状态（代码块追踪）
+     * @return 带 ANSI 样式的渲染结果
+     */
+    public String renderStreamingLine(String line, StreamState state) {
+        String stripped = line.stripLeading();
+
+        // 代码块边界
+        if (stripped.startsWith("```")) {
+            if (!state.inCodeBlock) {
+                state.codeLang = stripped.substring(3).strip().toLowerCase();
+                state.inCodeBlock = true;
+                String langLabel = state.codeLang.isEmpty() ? "code" : state.codeLang;
+                return AnsiStyle.dim("┌─" + langLabel + "─" + "─".repeat(Math.max(0, 40 - langLabel.length())));
+            } else {
+                state.inCodeBlock = false;
+                state.codeLang = "";
+                return AnsiStyle.dim("└" + "─".repeat(42));
+            }
+        }
+
+        // 代码块内容（语法高亮）
+        if (state.inCodeBlock) {
+            return AnsiStyle.DIM + "│" + AnsiStyle.RESET + " " + highlightCode(line, state.codeLang);
+        }
+
+        // 标题
+        if (stripped.startsWith("### ")) {
+            return AnsiStyle.bold(AnsiStyle.CYAN + stripped.substring(4)) + AnsiStyle.RESET;
+        } else if (stripped.startsWith("## ")) {
+            return AnsiStyle.bold(AnsiStyle.BLUE + stripped.substring(3)) + AnsiStyle.RESET;
+        } else if (stripped.startsWith("# ")) {
+            return AnsiStyle.bold(AnsiStyle.MAGENTA + stripped.substring(2)) + AnsiStyle.RESET;
+        }
+
+        // 引用块
+        if (stripped.startsWith("> ")) {
+            return AnsiStyle.DIM + "┃" + AnsiStyle.RESET + " " + AnsiStyle.ITALIC + renderInline(stripped.substring(2)) + AnsiStyle.RESET;
+        }
+
+        // 复选框列表（在无序列表前检测）
+        if (stripped.startsWith("- [ ] ")) {
+            return AnsiStyle.DIM + "☐" + AnsiStyle.RESET + " " + renderInline(stripped.substring(6));
+        }
+        if (stripped.startsWith("- [x] ") || stripped.startsWith("- [X] ")) {
+            return AnsiStyle.GREEN + "☑" + AnsiStyle.RESET + " " + renderInline(stripped.substring(6));
+        }
+
+        // 无序列表
+        if (stripped.startsWith("- ") || stripped.startsWith("* ")) {
+            int indent = line.length() - stripped.length();
+            String prefix = " ".repeat(indent);
+            return prefix + AnsiStyle.CYAN + "•" + AnsiStyle.RESET + " " + renderInline(stripped.substring(2));
+        }
+
+        // 有序列表
+        if (stripped.matches("^\\d+\\.\\s+.*")) {
+            Matcher m = Pattern.compile("^(\\s*)(\\d+)\\.\\s+(.*)").matcher(line);
+            if (m.matches()) {
+                return m.group(1) + AnsiStyle.CYAN + m.group(2) + "." + AnsiStyle.RESET + " " + renderInline(m.group(3));
+            }
+        }
+
+        // 分隔线
+        if (stripped.matches("^[-*]{3,}$")) {
+            return AnsiStyle.dim("─".repeat(42));
+        }
+
+        // 普通文本（行内格式渲染）
+        return renderInline(line);
+    }
 }

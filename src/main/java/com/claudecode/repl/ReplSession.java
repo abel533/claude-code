@@ -329,30 +329,46 @@ public class ReplSession {
             conversationSummary = input.length() > 40 ? input.substring(0, 40) : input;
         }
 
-        // Agent 循环（流式输出）
+        // Agent 循环（流式输出 + 行缓冲 Markdown 渲染）
         try {
             spinner.start("Thinking...");
             streamNewLine = true; // spinner 停止后 onStreamStart 会打印 ● 前缀
 
             long startTime = System.currentTimeMillis();
 
-            // 流式回调：逐 token 输出到终端，自动在每行开头加缩进
+            // 行缓冲：累积 token 直到换行，再用 MarkdownRenderer 渲染整行输出
+            StringBuilder lineBuffer = new StringBuilder();
+            MarkdownRenderer.StreamState mdState = new MarkdownRenderer.StreamState();
+
             String response = agentLoop.runStreaming(input, token -> {
                 for (int i = 0; i < token.length(); i++) {
                     char c = token.charAt(i);
                     if (c == '\n') {
-                        out.println();
-                        streamNewLine = true;
-                    } else {
+                        // 行完成 → 渲染 Markdown 并输出
                         if (streamNewLine) {
                             out.print("    "); // 续行缩进（与 ● 后文本对齐）
                             streamNewLine = false;
                         }
-                        out.print(c);
+                        String rendered = markdownRenderer.renderStreamingLine(lineBuffer.toString(), mdState);
+                        out.println(rendered);
+                        lineBuffer.setLength(0);
+                        streamNewLine = true;
+                    } else {
+                        lineBuffer.append(c);
                     }
                 }
                 out.flush();
             });
+
+            // 刷新残留缓冲（最后一行可能无 \n 结尾）
+            if (!lineBuffer.isEmpty()) {
+                if (streamNewLine) {
+                    out.print("    ");
+                    streamNewLine = false;
+                }
+                String rendered = markdownRenderer.renderStreamingLine(lineBuffer.toString(), mdState);
+                out.print(rendered);
+            }
 
             spinner.stop();
             out.println(); // 流式输出结束后换行
