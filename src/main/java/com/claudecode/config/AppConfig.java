@@ -7,7 +7,11 @@ import com.claudecode.context.GitContext;
 import com.claudecode.context.SkillLoader;
 import com.claudecode.context.SystemPromptBuilder;
 import com.claudecode.core.AgentLoop;
+import com.claudecode.core.TaskManager;
 import com.claudecode.core.TokenTracker;
+import com.claudecode.mcp.McpManager;
+import com.claudecode.plugin.OutputStylePlugin;
+import com.claudecode.plugin.PluginManager;
 import com.claudecode.repl.ReplSession;
 import com.claudecode.tool.ToolContext;
 import com.claudecode.tool.ToolRegistry;
@@ -21,7 +25,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
-import java.util.Map;
 
 /**
  * 应用配置类 —— Spring Bean 装配。
@@ -43,7 +46,40 @@ public class AppConfig {
     }
 
     @Bean
-    public ToolRegistry toolRegistry() {
+    public TaskManager taskManager() {
+        return new TaskManager();
+    }
+
+    @Bean
+    public McpManager mcpManager() {
+        McpManager manager = new McpManager();
+        try {
+            manager.loadFromConfig();
+        } catch (Exception e) {
+            log.warn("MCP 配置加载失败（可忽略）: {}", e.getMessage());
+        }
+        return manager;
+    }
+
+    @Bean
+    public PluginManager pluginManager(ToolContext toolContext) {
+        PluginManager manager = new PluginManager(toolContext);
+        // 注册内置插件
+        var stylePlugin = new OutputStylePlugin();
+        stylePlugin.initialize(new com.claudecode.plugin.PluginContext(
+                toolContext, System.getProperty("user.dir"), stylePlugin.id()));
+        // 加载外部插件
+        manager.loadAll();
+        return manager;
+    }
+
+    @Bean
+    public ToolRegistry toolRegistry(TaskManager taskManager, McpManager mcpManager,
+                                     ToolContext toolContext) {
+        // 将 TaskManager 和 McpManager 注册到 ToolContext 供工具使用
+        toolContext.set("TASK_MANAGER", taskManager);
+        toolContext.set("MCP_MANAGER", mcpManager);
+
         ToolRegistry registry = new ToolRegistry();
         registry.registerAll(
                 new BashTool(),
@@ -58,15 +94,31 @@ public class AppConfig {
                 new AgentTool(),
                 new NotebookEditTool(),
                 new WebSearchTool(),
-                new AskUserQuestionTool()
+                new AskUserQuestionTool(),
+                // P2: 任务管理工具
+                new TaskCreateTool(),
+                new TaskGetTool(),
+                new TaskListTool(),
+                new TaskUpdateTool(),
+                // P2: 配置工具
+                new ConfigTool()
         );
+
+        // P2: 注册 MCP 工具桥接（将远程 MCP 工具映射为本地工具）
+        for (var client : mcpManager.getClients().values()) {
+            for (var mcpTool : client.getTools()) {
+                registry.register(new McpToolBridge(client.getServerName(), mcpTool));
+            }
+        }
+
         return registry;
     }
 
     @Bean
-    public CommandRegistry commandRegistry() {
+    public CommandRegistry commandRegistry(PluginManager pluginManager) {
         CommandRegistry registry = new CommandRegistry();
         registry.registerAll(
+                // 基础命令
                 new HelpCommand(),
                 new ClearCommand(),
                 new CompactCommand(),
@@ -77,23 +129,38 @@ public class AppConfig {
                 new InitCommand(),
                 new ConfigCommand(),
                 new HistoryCommand(),
+                // P0 命令
                 new DiffCommand(),
                 new VersionCommand(),
                 new SkillsCommand(),
                 new MemoryCommand(),
                 new CopyCommand(),
+                // P1 命令
                 new ResumeCommand(),
                 new ExportCommand(),
                 new CommitCommand(),
+                // P2 命令
+                new HooksCommand(),
+                new ReviewCommand(),
+                new StatsCommand(),
+                new BranchCommand(),
+                new RewindCommand(),
+                new TagCommand(),
+                new SecurityReviewCommand(),
+                new McpCommand(),
+                new PluginCommand(),
+                // Exit 放最后
                 new ExitCommand()
         );
+
+        // P2: 注册插件提供的命令
+        pluginManager.registerCommands(registry);
+
         return registry;
     }
 
     /**
      * 根据 claude-code.provider 配置选择 ChatModel。
-     * - "anthropic" → 使用 anthropicChatModel
-     * - "openai"（默认）→ 使用 openAiChatModel
      */
     @Bean
     public ChatModel activeChatModel(
@@ -111,7 +178,6 @@ public class AppConfig {
 
     @Bean
     public ProviderInfo providerInfo() {
-        // 统一使用 AI_BASE_URL / AI_MODEL 环境变量，按 Provider 给不同默认值
         String baseUrl;
         String model;
 
@@ -156,7 +222,8 @@ public class AppConfig {
 
     @Bean
     public AgentLoop agentLoop(ChatModel activeChatModel, ToolRegistry toolRegistry,
-                               ToolContext toolContext, String systemPrompt, TokenTracker tokenTracker) {
+                               ToolContext toolContext, String systemPrompt, TokenTracker tokenTracker,
+                               PluginManager pluginManager) {
         AgentLoop mainLoop = new AgentLoop(activeChatModel, toolRegistry, toolContext, systemPrompt, tokenTracker);
 
         // 注册子 Agent 工厂
@@ -165,6 +232,9 @@ public class AppConfig {
                     AgentLoop subLoop = new AgentLoop(activeChatModel, toolRegistry, toolContext, systemPrompt);
                     return subLoop.run(prompt);
                 });
+
+        // 注册 PluginManager 到 ToolContext
+        toolContext.set("PLUGIN_MANAGER", pluginManager);
 
         return mainLoop;
     }
@@ -175,7 +245,7 @@ public class AppConfig {
         return new ReplSession(agentLoop, toolRegistry, commandRegistry, providerInfo);
     }
 
-    /** API 提供者信息，供 Banner 和命令显示 */
+    /** API 提供者信息 */
     public record ProviderInfo(String provider, String baseUrl, String model) {
     }
 }
