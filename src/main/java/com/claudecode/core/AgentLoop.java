@@ -41,6 +41,7 @@ public class AgentLoop {
     private final ToolRegistry toolRegistry;
     private final ToolContext toolContext;
     private final String systemPrompt;
+    private final TokenTracker tokenTracker;
 
     /** 消息历史 —— 自行管理，不依赖 Spring AI ChatMemory */
     private final List<Message> messageHistory = new ArrayList<>();
@@ -53,10 +54,16 @@ public class AgentLoop {
 
     public AgentLoop(ChatModel chatModel, ToolRegistry toolRegistry,
                      ToolContext toolContext, String systemPrompt) {
+        this(chatModel, toolRegistry, toolContext, systemPrompt, new TokenTracker());
+    }
+
+    public AgentLoop(ChatModel chatModel, ToolRegistry toolRegistry,
+                     ToolContext toolContext, String systemPrompt, TokenTracker tokenTracker) {
         this.chatModel = chatModel;
         this.toolRegistry = toolRegistry;
         this.toolContext = toolContext;
         this.systemPrompt = systemPrompt;
+        this.tokenTracker = tokenTracker;
         // 添加系统提示词到消息历史
         this.messageHistory.add(new SystemMessage(systemPrompt));
     }
@@ -93,6 +100,15 @@ public class AgentLoop {
 
             Prompt prompt = new Prompt(List.copyOf(messageHistory), options);
             ChatResponse response = chatModel.call(prompt);
+
+            // 记录 Token 使用量
+            if (response.getMetadata() != null && response.getMetadata().getUsage() != null) {
+                var usage = response.getMetadata().getUsage();
+                tokenTracker.recordUsage(
+                        usage.getPromptTokens(),
+                        usage.getCompletionTokens()
+                );
+            }
 
             AssistantMessage assistant = response.getResult().getOutput();
             messageHistory.add(assistant);
@@ -167,6 +183,16 @@ public class AgentLoop {
     /** 获取消息历史（用于上下文压缩等场景） */
     public List<Message> getMessageHistory() {
         return Collections.unmodifiableList(messageHistory);
+    }
+
+    /** 获取 Token 追踪器 */
+    public TokenTracker getTokenTracker() {
+        return tokenTracker;
+    }
+
+    /** 获取系统提示词 */
+    public String getSystemPrompt() {
+        return systemPrompt;
     }
 
     /** 重置历史（保留系统提示词） */
