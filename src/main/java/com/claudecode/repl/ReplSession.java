@@ -102,6 +102,10 @@ public class ReplSession {
             switch (event.phase()) {
                 case START -> {
                     spinner.stop();
+                    // 如果前面的流式文本没有换行结尾，先换行
+                    if (!streamNewLine) {
+                        out.println();
+                    }
                     toolStatusRenderer.renderStart(event.toolName(), event.arguments());
                     streamNewLine = true; // 工具渲染输出以 println 结尾
                 }
@@ -112,8 +116,16 @@ public class ReplSession {
             }
         });
 
-        // 流式输出第一个 token 到达时停止 spinner
-        agentLoop.setOnStreamStart(() -> spinner.stop());
+        // 流式输出第一个 token 到达时：停止 spinner → 打印 ● 前缀
+        agentLoop.setOnStreamStart(() -> {
+            spinner.stop();
+            // 每个流式迭代开始时打印 ● 前缀（工具调用后的续文也会获得新的 ●）
+            if (streamNewLine) {
+                out.println(); // 与前面的输出之间留一个空行
+            }
+            out.print(AnsiStyle.BRIGHT_CYAN + "  ● " + AnsiStyle.RESET);
+            streamNewLine = false;
+        });
 
         agentLoop.setOnAssistantMessage(text -> {
             // 阻塞模式回调：流式模式下由 onToken 实时输出，此回调不触发
@@ -199,17 +211,9 @@ public class ReplSession {
                 statusLine.enable(providerInfo.model(), agentLoop.getTokenTracker());
             }
 
-            // 输入框横线宽度
-            int termWidth = terminal.getWidth();
-            int lineWidth = termWidth > 10 ? termWidth - 2 : 78;
-            String inputLine = AnsiStyle.DIM + "─".repeat(lineWidth) + AnsiStyle.RESET;
-
             CommandContext cmdContext = new CommandContext(agentLoop, toolRegistry, commandRegistry, out, () -> running = false);
 
             while (running) {
-                // 输入框上横线
-                out.println(inputLine);
-
                 String input;
                 try {
                     input = reader.readLine(prompt).strip();
@@ -220,9 +224,6 @@ public class ReplSession {
                 } catch (EndOfFileException e) {
                     break;
                 }
-
-                // 输入框下横线
-                out.println(inputLine);
 
                 if (input.isEmpty()) {
                     continue;
@@ -331,13 +332,9 @@ public class ReplSession {
         // Agent 循环（流式输出）
         try {
             spinner.start("Thinking...");
-            out.println(); // 换行准备输出区域
+            streamNewLine = true; // spinner 停止后 onStreamStart 会打印 ● 前缀
 
             long startTime = System.currentTimeMillis();
-
-            // AI 回复前的 ● 标识（不换行，后续流式文本紧跟其后）
-            out.print(AnsiStyle.BRIGHT_CYAN + "  ● " + AnsiStyle.RESET);
-            streamNewLine = false; // 重置换行跟踪
 
             // 流式回调：逐 token 输出到终端，自动在每行开头加缩进
             String response = agentLoop.runStreaming(input, token -> {
