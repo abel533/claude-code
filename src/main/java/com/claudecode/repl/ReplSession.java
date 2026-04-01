@@ -114,33 +114,31 @@ public class ReplSession {
                 .streams(System.in, System.out)
                 .build()) {
 
-            // 检测是否为 dumb 终端并提示
             boolean isDumb = "dumb".equals(terminal.getType());
             if (isDumb) {
                 log.info("当前为 dumb 终端模式，建议使用 Windows Terminal / PowerShell / cmd 获得完整体验");
             }
 
+            // 配置 Parser：支持反斜杠续行 (\) 和 三引号块 (""")
+            DefaultParser parser = new DefaultParser();
+            parser.setEscapeChars(new char[]{'\\'}); // 反斜杠续行
+
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
-                    .parser(new DefaultParser())
+                    .parser(parser)
                     .completer(new ClaudeCodeCompleter(commandRegistry, toolRegistry))
                     .variable(LineReader.HISTORY_FILE, historyDir.resolve("history"))
                     .variable(LineReader.HISTORY_SIZE, 1000)
+                    .variable(LineReader.SECONDARY_PROMPT_PATTERN, "%P  ... ")
                     .option(LineReader.Option.CASE_INSENSITIVE, true)
                     .option(LineReader.Option.AUTO_LIST, true)
                     .build();
 
-            // 构建彩色提示符
+            // 主提示符
             String prompt = new AttributedStringBuilder()
                     .style(AttributedStyle.BOLD.foreground(AttributedStyle.CYAN))
                     .append("❯ ")
                     .style(AttributedStyle.DEFAULT)
-                    .toAnsi(terminal);
-
-            // 续行提示符（多行输入时显示）
-            String rightPrompt = new AttributedStringBuilder()
-                    .style(AttributedStyle.DEFAULT.foreground(AttributedStyle.BRIGHT))
-                    .append("")
                     .toAnsi(terminal);
 
             printBanner(terminal);
@@ -152,12 +150,10 @@ public class ReplSession {
                 try {
                     input = reader.readLine(prompt).strip();
                 } catch (UserInterruptException e) {
-                    // Ctrl+C —— 取消当前输入，继续等待
                     spinner.stop();
                     out.println(AnsiStyle.dim("  ^C"));
                     continue;
                 } catch (EndOfFileException e) {
-                    // Ctrl+D —— 退出
                     break;
                 }
 
