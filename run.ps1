@@ -14,6 +14,10 @@ $env:MAVEN_OPTS = "--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-a
 # $env:ANTHROPIC_API_KEY = "your-api-key-here"
 # $env:AI_MODEL = "claude-sonnet-4-20250514"
 
+# === 设置控制台 UTF-8 编码（支持 emoji 等字符） ===
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+
 # === 启动应用 ===
 Set-Location $PSScriptRoot
 mvn spring-boot:run -q

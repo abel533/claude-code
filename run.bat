@@ -15,6 +15,9 @@ REM === AI API 配置（按需修改） ===
 REM set ANTHROPIC_API_KEY=your-api-key-here
 REM set AI_MODEL=claude-sonnet-4-20250514
 
+REM === 设置控制台 UTF-8 编码（支持 emoji 等字符） ===
+chcp 65001 >nul 2>&1
+
 REM === 启动应用 ===
 cd /d %~dp0
 mvn spring-boot:run -q

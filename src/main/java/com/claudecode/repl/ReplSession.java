@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Scanner;
@@ -52,7 +53,8 @@ public class ReplSession {
         this.agentLoop = agentLoop;
         this.toolRegistry = toolRegistry;
         this.commandRegistry = commandRegistry;
-        this.out = System.out;
+        // 强制使用 UTF-8 编码输出，确保 emoji 等 Unicode 字符在 Windows 终端正常显示
+        this.out = new PrintStream(System.out, true, StandardCharsets.UTF_8);
         this.toolStatusRenderer = new ToolStatusRenderer(out);
         this.markdownRenderer = new MarkdownRenderer(out);
         this.spinner = new SpinnerAnimation(out);
