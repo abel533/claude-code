@@ -43,7 +43,12 @@ public class AppConfig {
                 new FileWriteTool(),
                 new FileEditTool(),
                 new GlobTool(),
-                new GrepTool()
+                new GrepTool(),
+                new ListFilesTool(),
+                new WebFetchTool(),
+                new TodoWriteTool(),
+                new AgentTool(),
+                new NotebookEditTool()
         );
         return registry;
     }
@@ -76,7 +81,16 @@ public class AppConfig {
     @Bean
     public AgentLoop agentLoop(@Qualifier("anthropicChatModel") ChatModel chatModel, ToolRegistry toolRegistry,
                                ToolContext toolContext, String systemPrompt) {
-        return new AgentLoop(chatModel, toolRegistry, toolContext, systemPrompt);
+        AgentLoop mainLoop = new AgentLoop(chatModel, toolRegistry, toolContext, systemPrompt);
+
+        // 注册子 Agent 工厂到 ToolContext，使 AgentTool 能创建独立的 AgentLoop
+        toolContext.set(AgentTool.AGENT_FACTORY_KEY,
+                (java.util.function.Function<String, String>) prompt -> {
+                    AgentLoop subLoop = new AgentLoop(chatModel, toolRegistry, toolContext, systemPrompt);
+                    return subLoop.run(prompt);
+                });
+
+        return mainLoop;
     }
 
     @Bean
