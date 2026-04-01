@@ -44,7 +44,7 @@ public class McpCommand implements SlashCommand {
         // 暂时通过静态持有者或类似机制获取。
         McpManager manager = McpManagerHolder.getInstance();
         if (manager == null) {
-            return AnsiStyle.red("  ❌ MCP 管理器未初始化");
+            return AnsiStyle.red("  ❌ MCP manager not initialized");
         }
 
         String trimmed = args.strip();
@@ -63,7 +63,7 @@ public class McpCommand implements SlashCommand {
             case "resources" -> handleResources(manager, subArgs);
             case "reload" -> handleReload(manager, context);
             case "help" -> showHelp();
-            default -> AnsiStyle.red("  未知子命令: " + subCommand) + "\n" + showHelp();
+            default -> AnsiStyle.red("  Unknown subcommand: " + subCommand) + "\n" + showHelp();
         };
     }
 
@@ -73,14 +73,14 @@ public class McpCommand implements SlashCommand {
     private String showStatus(McpManager manager) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
-        sb.append(AnsiStyle.bold("  🔌 MCP 服务器状态\n"));
+        sb.append(AnsiStyle.bold("  🔌 MCP Server Status\n"));
         sb.append("  ").append("─".repeat(50)).append("\n\n");
 
         Map<String, McpClient> clients = manager.getClients();
         if (clients.isEmpty()) {
-            sb.append("  无已连接的 MCP 服务器\n\n");
-            sb.append(AnsiStyle.dim("  提示: 使用 /mcp connect <name> <command> [args] 连接服务器\n"));
-            sb.append(AnsiStyle.dim("  或在 .mcp.json 配置文件中定义服务器\n"));
+            sb.append("  No connected MCP servers\n\n");
+            sb.append(AnsiStyle.dim("  Tip: Use /mcp connect <name> <command> [args] to connect\n"));
+            sb.append(AnsiStyle.dim("  Or define servers in .mcp.json config file\n"));
             return sb.toString();
         }
 
@@ -92,13 +92,13 @@ public class McpCommand implements SlashCommand {
             String statusText;
             if (client.isConnected() && client.isInitialized()) {
                 statusIcon = "✅";
-                statusText = AnsiStyle.green("已连接");
+                statusText = AnsiStyle.green("Connected");
             } else if (client.isConnected()) {
                 statusIcon = "🔄";
-                statusText = AnsiStyle.yellow("连接中");
+                statusText = AnsiStyle.yellow("Connecting");
             } else {
                 statusIcon = "❌";
-                statusText = AnsiStyle.red("已断开");
+                statusText = AnsiStyle.red("Disconnected");
             }
 
             sb.append(String.format("  %s %-18s %s%n", statusIcon, AnsiStyle.bold(name), statusText));
@@ -107,7 +107,7 @@ public class McpCommand implements SlashCommand {
             int toolCount = client.getTools().size();
             int resCount = client.getResources().size();
             sb.append(String.format("     %s%n",
-                    AnsiStyle.dim(toolCount + " 工具, " + resCount + " 资源")));
+                    AnsiStyle.dim(toolCount + " tools, " + resCount + " resources")));
 
             // 显示服务器信息
             if (client.getServerInfo() != null) {
@@ -117,8 +117,8 @@ public class McpCommand implements SlashCommand {
         }
 
         sb.append("\n");
-        sb.append(AnsiStyle.dim("  共 " + clients.size() + " 个服务器, "
-                + manager.getAllTools().size() + " 个工具\n"));
+        sb.append(AnsiStyle.dim("  Total " + clients.size() + " servers, "
+                + manager.getAllTools().size() + " tools\n"));
 
         return sb.toString();
     }
@@ -128,12 +128,12 @@ public class McpCommand implements SlashCommand {
      */
     private String handleConnect(McpManager manager, String args, CommandContext context) {
         if (args.isEmpty()) {
-            return AnsiStyle.red("  用法: /mcp connect <name> <command> [args...]");
+            return AnsiStyle.red("  Usage: /mcp connect <name> <command> [args...]");
         }
 
         String[] parts = args.split("\\s+");
         if (parts.length < 2) {
-            return AnsiStyle.red("  用法: /mcp connect <name> <command> [args...]");
+            return AnsiStyle.red("  Usage: /mcp connect <name> <command> [args...]");
         }
 
         String name = parts[0];
@@ -149,13 +149,13 @@ public class McpCommand implements SlashCommand {
             registerBridgedTools(client, name, context);
 
             StringBuilder sb = new StringBuilder();
-            sb.append(AnsiStyle.green("  ✅ 已连接 MCP 服务器: " + name)).append("\n");
-            sb.append(AnsiStyle.dim("     " + client.getTools().size() + " 个工具, "
-                    + client.getResources().size() + " 个资源")).append("\n");
+            sb.append(AnsiStyle.green("  ✅ Connected to MCP server: " + name)).append("\n");
+            sb.append(AnsiStyle.dim("     " + client.getTools().size() + " tools, "
+                    + client.getResources().size() + " resources")).append("\n");
 
             // 列出发现的工具
             if (!client.getTools().isEmpty()) {
-                sb.append("\n  工具:\n");
+                sb.append("\n  Tools:\n");
                 for (McpClient.McpTool tool : client.getTools()) {
                     sb.append("    • ").append(tool.name());
                     if (!tool.description().isEmpty()) {
@@ -167,7 +167,7 @@ public class McpCommand implements SlashCommand {
 
             return sb.toString();
         } catch (McpException e) {
-            return AnsiStyle.red("  ❌ 连接失败: " + e.getMessage());
+            return AnsiStyle.red("  ❌ Connection failed: " + e.getMessage());
         }
     }
 
@@ -176,15 +176,15 @@ public class McpCommand implements SlashCommand {
      */
     private String handleDisconnect(McpManager manager, String args) {
         if (args.isEmpty()) {
-            return AnsiStyle.red("  用法: /mcp disconnect <name>");
+            return AnsiStyle.red("  Usage: /mcp disconnect <name>");
         }
 
         String name = args.split("\\s+")[0];
         try {
             manager.disconnect(name);
-            return AnsiStyle.green("  ✅ 已断开 MCP 服务器: " + name);
+            return AnsiStyle.green("  ✅ Disconnected MCP server: " + name);
         } catch (McpException e) {
-            return AnsiStyle.red("  ❌ 断开失败: " + e.getMessage());
+            return AnsiStyle.red("  ❌ Disconnect failed: " + e.getMessage());
         }
     }
 
@@ -194,7 +194,7 @@ public class McpCommand implements SlashCommand {
     private String handleTools(McpManager manager, String args) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
-        sb.append(AnsiStyle.bold("  🛠️  MCP 工具列表\n"));
+        sb.append(AnsiStyle.bold("  🛠️  MCP Tools\n"));
         sb.append("  ").append("─".repeat(50)).append("\n\n");
 
         String serverFilter = args.isEmpty() ? null : args.split("\\s+")[0];
@@ -203,13 +203,13 @@ public class McpCommand implements SlashCommand {
         if (serverFilter != null) {
             tools = manager.getServerTools(serverFilter);
             if (tools.isEmpty()) {
-                return sb + "  服务器 '" + serverFilter + "' 无工具或不存在\n";
+                return sb + "  Server '" + serverFilter + "' has no tools or does not exist\n";
             }
-            sb.append(AnsiStyle.dim("  服务器: " + serverFilter)).append("\n\n");
+            sb.append(AnsiStyle.dim("  Server: " + serverFilter)).append("\n\n");
         } else {
             tools = manager.getAllTools();
             if (tools.isEmpty()) {
-                return sb + "  无可用的 MCP 工具\n";
+                return sb + "  No available MCP tools\n";
             }
         }
 
@@ -225,7 +225,7 @@ public class McpCommand implements SlashCommand {
             sb.append("\n");
         }
 
-        sb.append(AnsiStyle.dim("  共 " + tools.size() + " 个工具")).append("\n");
+        sb.append(AnsiStyle.dim("  Total " + tools.size() + " tools")).append("\n");
         return sb.toString();
     }
 
@@ -235,7 +235,7 @@ public class McpCommand implements SlashCommand {
     private String handleResources(McpManager manager, String args) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
-        sb.append(AnsiStyle.bold("  📦 MCP 资源列表\n"));
+        sb.append(AnsiStyle.bold("  📦 MCP Resources\n"));
         sb.append("  ").append("─".repeat(50)).append("\n\n");
 
         String serverFilter = args.isEmpty() ? null : args.split("\\s+")[0];
@@ -244,13 +244,13 @@ public class McpCommand implements SlashCommand {
         if (serverFilter != null) {
             resourceList = manager.getServerResources(serverFilter);
             if (resourceList.isEmpty()) {
-                return sb + "  服务器 '" + serverFilter + "' 无资源或不存在\n";
+                return sb + "  Server '" + serverFilter + "' has no resources or does not exist\n";
             }
-            sb.append(AnsiStyle.dim("  服务器: " + serverFilter)).append("\n\n");
+            sb.append(AnsiStyle.dim("  Server: " + serverFilter)).append("\n\n");
         } else {
             resourceList = manager.getAllResources();
             if (resourceList.isEmpty()) {
-                return sb + "  无可用的 MCP 资源\n";
+                return sb + "  No available MCP resources\n";
             }
         }
 
@@ -263,7 +263,7 @@ public class McpCommand implements SlashCommand {
             sb.append("    MIME: ").append(AnsiStyle.dim(resource.mimeType())).append("\n\n");
         }
 
-        sb.append(AnsiStyle.dim("  共 " + resourceList.size() + " 个资源")).append("\n");
+        sb.append(AnsiStyle.dim("  Total " + resourceList.size() + " resources")).append("\n");
         return sb.toString();
     }
 
@@ -279,11 +279,11 @@ public class McpCommand implements SlashCommand {
                 registerBridgedTools(entry.getValue(), entry.getKey(), context);
             }
 
-            return AnsiStyle.green("  ✅ MCP 配置已重新加载: "
-                    + manager.getClients().size() + " 个服务器, "
-                    + manager.getAllTools().size() + " 个工具");
+            return AnsiStyle.green("  ✅ MCP config reloaded: "
+                    + manager.getClients().size() + " servers, "
+                    + manager.getAllTools().size() + " tools");
         } catch (Exception e) {
-            return AnsiStyle.red("  ❌ 重载失败: " + e.getMessage());
+            return AnsiStyle.red("  ❌ Reload failed: " + e.getMessage());
         }
     }
 
@@ -308,20 +308,20 @@ public class McpCommand implements SlashCommand {
     private String showHelp() {
         return """
                 
-                  \033[1m🔌 MCP 命令帮助\033[0m
+                  \033[1m🔌 MCP Command Help\033[0m
                   ──────────────────────────────────────
                 
-                  /mcp                                列出所有 MCP 服务器状态
-                  /mcp connect <name> <cmd> [args]    连接到 MCP 服务器
-                  /mcp disconnect <name>              断开 MCP 服务器
-                  /mcp tools [server]                 列出 MCP 工具
-                  /mcp resources [server]             列出 MCP 资源
-                  /mcp reload                         从配置文件重新加载
-                  /mcp help                           显示此帮助信息
+                  /mcp                                List all MCP server status
+                  /mcp connect <name> <cmd> [args]    Connect to MCP server
+                  /mcp disconnect <name>              Disconnect MCP server
+                  /mcp tools [server]                 List MCP tools
+                  /mcp resources [server]             List MCP resources
+                  /mcp reload                         Reload from config file
+                  /mcp help                           Show this help
                 
-                  配置文件:
-                    项目级: .mcp.json
-                    全局:   ~/.claude-code-java/mcp.json
+                  Config files:
+                    Project: .mcp.json
+                    Global:  ~/.claude-code-java/mcp.json
                 """;
     }
 

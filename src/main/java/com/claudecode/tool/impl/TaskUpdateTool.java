@@ -52,16 +52,16 @@ public class TaskUpdateTool implements Tool {
                   "properties": {
                     "task_id": {
                       "type": "string",
-                      "description": "要更新的任务 ID"
+                      "description": "Task ID to update"
                     },
                     "status": {
                       "type": "string",
-                      "description": "新状态：PENDING / RUNNING / COMPLETED / FAILED / CANCELLED",
+                      "description": "New status: PENDING / RUNNING / COMPLETED / FAILED / CANCELLED",
                       "enum": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]
                     },
                     "result": {
                       "type": "string",
-                      "description": "任务执行结果或附加信息（可选）"
+                      "description": "Task execution result or additional info (optional)"
                     }
                   },
                   "required": ["task_id", "status"]
@@ -78,27 +78,27 @@ public class TaskUpdateTool implements Tool {
         // 获取 TaskManager 实例
         TaskManager manager = context.get(TASK_MANAGER_KEY);
         if (manager == null) {
-            return errorJson("TaskManager 未初始化，请检查上下文配置");
+            return errorJson("TaskManager not initialized, check context configuration");
         }
 
         // 解析必填参数: task_id
         String taskId = (String) input.get("task_id");
         if (taskId == null || taskId.isBlank()) {
-            return errorJson("参数 'task_id' 是必填项且不能为空");
+            return errorJson("Parameter 'task_id' is required and cannot be empty");
         }
 
         // 解析必填参数: status
         String statusStr = (String) input.get("status");
         if (statusStr == null || statusStr.isBlank()) {
-            return errorJson("参数 'status' 是必填项且不能为空");
+            return errorJson("Parameter 'status' is required and cannot be empty");
         }
 
         TaskStatus newStatus;
         try {
             newStatus = TaskStatus.valueOf(statusStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return errorJson("无效的状态值: '" + statusStr
-                    + "'。可选值: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED");
+            return errorJson("Invalid status value: '" + statusStr
+                    + "'. Valid values: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED");
         }
 
         // 解析可选参数: result
@@ -107,7 +107,7 @@ public class TaskUpdateTool implements Tool {
         // 在更新前先获取旧状态（用于返回信息）
         Optional<TaskInfo> beforeOpt = manager.getTask(taskId);
         if (beforeOpt.isEmpty()) {
-            return errorJson("未找到 ID 为 '" + taskId + "' 的任务");
+            return errorJson("Task with ID '" + taskId + "' not found");
         }
 
         TaskInfo before = beforeOpt.get();
@@ -116,15 +116,15 @@ public class TaskUpdateTool implements Tool {
         // 执行更新
         boolean success = manager.updateTask(taskId, newStatus, result);
         if (!success) {
-            return errorJson("更新失败：任务 '" + taskId + "' 当前状态为 "
-                    + oldStatus + "，可能已处于终态，无法再次更新");
+            return errorJson("Update failed: task '" + taskId + "' current status is "
+                    + oldStatus + ", may be in terminal state and cannot be updated");
         }
 
         // 获取更新后的任务信息
         Optional<TaskInfo> afterOpt = manager.getTask(taskId);
         if (afterOpt.isEmpty()) {
             // 理论上不会出现，防御性编程
-            return errorJson("更新后未能获取任务信息");
+            return errorJson("Failed to get task info after update");
         }
 
         TaskInfo after = afterOpt.get();
@@ -144,8 +144,8 @@ public class TaskUpdateTool implements Tool {
         }
 
         sb.append("  \"updated_at\": \"").append(after.updatedAt()).append("\",\n");
-        sb.append("  \"message\": \"任务状态已从 ").append(oldStatus)
-                .append(" 更新为 ").append(after.status().name()).append("\"\n");
+        sb.append("  \"message\": \"Task status updated from ").append(oldStatus)
+                .append(" to ").append(after.status().name()).append("\"\n");
         sb.append("}");
 
         return sb.toString();

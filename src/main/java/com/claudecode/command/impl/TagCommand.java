@@ -43,7 +43,7 @@ public class TagCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.red("  ✗ AgentLoop 不可用。");
+            return AnsiStyle.red("  ✗ AgentLoop unavailable.");
         }
 
         String trimmedArgs = args != null ? args.trim() : "";
@@ -78,7 +78,7 @@ public class TagCommand implements SlashCommand {
      */
     private String createTag(String tagName, CommandContext context) {
         if (tagName.isEmpty()) {
-            return AnsiStyle.red("  ✗ 请指定标签名称。");
+            return AnsiStyle.red("  ✗ Please specify tag name.");
         }
 
         // 标签名称不能与子命令冲突（虽然 list/goto 已在 switch 中处理）
@@ -88,9 +88,9 @@ public class TagCommand implements SlashCommand {
         boolean isOverwrite = tags.containsKey(tagName);
         tags.put(tagName, new TagInfo(position, timestamp));
 
-        String action = isOverwrite ? "已更新" : "已创建";
-        return AnsiStyle.green("  ✓ 标签" + action + ": ") + AnsiStyle.bold(tagName) + "\n"
-                + AnsiStyle.dim("    位置: 第 " + position + " 条消息  时间: " + timestamp);
+        String action = isOverwrite ? "updated" : "created";
+        return AnsiStyle.green("  ✓ Tag " + action + ": ") + AnsiStyle.bold(tagName) + "\n"
+                + AnsiStyle.dim("    Position: message " + position + "  Time: " + timestamp);
     }
 
     /**
@@ -101,8 +101,8 @@ public class TagCommand implements SlashCommand {
      */
     private String listTags(CommandContext context) {
         if (tags.isEmpty()) {
-            return AnsiStyle.dim("  没有保存的标签。") + "\n"
-                    + AnsiStyle.dim("  使用 /tag <name> 为当前位置打标签。");
+            return AnsiStyle.dim("  No saved tags.") + "\n"
+                    + AnsiStyle.dim("  Use /tag <name> to tag the current position.");
         }
 
         int currentPosition = context.agentLoop().getMessageHistory().size();
@@ -127,7 +127,7 @@ public class TagCommand implements SlashCommand {
         }
 
         sb.append("\n")
-                .append(AnsiStyle.dim("  当前位置: " + currentPosition + " 条消息  |  共 " + tags.size() + " 个标签"))
+                .append(AnsiStyle.dim("  Current position: " + currentPosition + " messages  |  Total " + tags.size() + " tags"))
                 .append("\n");
         return sb.toString();
     }
@@ -144,14 +144,14 @@ public class TagCommand implements SlashCommand {
      */
     private String gotoTag(String tagName, CommandContext context) {
         if (tagName.isEmpty()) {
-            return AnsiStyle.red("  ✗ 请指定标签名称。") + "\n"
-                    + AnsiStyle.dim("  用法: /tag goto <name>");
+            return AnsiStyle.red("  ✗ Please specify tag name.") + "\n"
+                    + AnsiStyle.dim("  Usage: /tag goto <name>");
         }
 
         TagInfo info = tags.get(tagName);
         if (info == null) {
-            return AnsiStyle.red("  ✗ 标签不存在: " + tagName) + "\n"
-                    + AnsiStyle.dim("  使用 /tag list 查看所有可用标签。");
+            return AnsiStyle.red("  ✗ Tag not found: " + tagName) + "\n"
+                    + AnsiStyle.dim("  Use /tag list to see all available tags.");
         }
 
         List<Message> currentHistory = context.agentLoop().getMessageHistory();
@@ -159,8 +159,8 @@ public class TagCommand implements SlashCommand {
         int targetPosition = info.position();
 
         if (targetPosition >= currentSize) {
-            return AnsiStyle.yellow("  ⚠ 标签位置 (" + targetPosition + ") 不小于当前消息数 ("
-                    + currentSize + ")，无需回溯。");
+            return AnsiStyle.yellow("  ⚠ Tag position (" + targetPosition + ") is not less than current message count ("
+                    + currentSize + "), no rewind needed.");
         }
 
         // 截断到标签位置
@@ -168,8 +168,8 @@ public class TagCommand implements SlashCommand {
         context.agentLoop().replaceHistory(truncated);
 
         int removedCount = currentSize - targetPosition;
-        return AnsiStyle.green("  ✓ 已回溯到标签: ") + AnsiStyle.bold(tagName) + "\n"
-                + AnsiStyle.dim("    移除了 " + removedCount + " 条消息，当前消息数: " + targetPosition);
+        return AnsiStyle.green("  ✓ Rewound to tag: ") + AnsiStyle.bold(tagName) + "\n"
+                + AnsiStyle.dim("    Removed " + removedCount + " messages, current count: " + targetPosition);
     }
 
     /**
@@ -179,10 +179,10 @@ public class TagCommand implements SlashCommand {
      */
     private String showUsage() {
         StringBuilder sb = new StringBuilder();
-        sb.append(AnsiStyle.bold("\n  🏷️  Tag — 对话位置标签\n\n"));
-        sb.append("  ").append(AnsiStyle.cyan("/tag <name>")).append("         为当前位置打标签\n");
-        sb.append("  ").append(AnsiStyle.cyan("/tag list")).append("           列出所有标签\n");
-        sb.append("  ").append(AnsiStyle.cyan("/tag goto <name>")).append("    回溯到指定标签位置\n");
+        sb.append(AnsiStyle.bold("\n  🏷️  Tag — Conversation position tags\n\n"));
+        sb.append("  ").append(AnsiStyle.cyan("/tag <name>")).append("         Tag current position\n");
+        sb.append("  ").append(AnsiStyle.cyan("/tag list")).append("           List all tags\n");
+        sb.append("  ").append(AnsiStyle.cyan("/tag goto <name>")).append("    Rewind to tag position\n");
         return sb.toString();
     }
 

@@ -119,8 +119,8 @@ public class TaskManager {
      * @throws NullPointerException 若 description 或 work 为 null
      */
     public String createTask(String description, Callable<String> work) {
-        Objects.requireNonNull(description, "任务描述不能为 null");
-        Objects.requireNonNull(work, "任务工作体不能为 null");
+        Objects.requireNonNull(description, "Task description cannot be null");
+        Objects.requireNonNull(work, "Task work body cannot be null");
 
         String taskId = generateId();
         Instant now = Instant.now();
@@ -162,7 +162,7 @@ public class TaskManager {
      */
     public String createTask(String description, Callable<String> work,
                              Map<String, String> metadata) {
-        Objects.requireNonNull(metadata, "元数据不能为 null");
+        Objects.requireNonNull(metadata, "Metadata cannot be null");
         String taskId = createTask(description, work);
         // 把元数据补充进去（创建时尚处于 PENDING/RUNNING 初期阶段）
         tasks.computeIfPresent(taskId, (id, old) -> new TaskInfo(
@@ -194,7 +194,7 @@ public class TaskManager {
      * @return 生成的任务 ID
      */
     public String createManualTask(String description, Map<String, String> metadata) {
-        Objects.requireNonNull(description, "任务描述不能为 null");
+        Objects.requireNonNull(description, "Task description cannot be null");
 
         String taskId = generateId();
         Instant now = Instant.now();
@@ -332,14 +332,14 @@ public class TaskManager {
      */
     public String getSummary() {
         if (tasks.isEmpty()) {
-            return "当前没有任何任务。";
+            return "No tasks at the moment.";
         }
 
         Map<TaskStatus, Long> counts = tasks.values().stream()
                 .collect(Collectors.groupingBy(TaskInfo::status, Collectors.counting()));
 
         StringBuilder sb = new StringBuilder();
-        sb.append("任务汇总 (共 ").append(tasks.size()).append(" 个):\n");
+        sb.append("Task summary (total ").append(tasks.size()).append("):\n");
         for (TaskStatus status : TaskStatus.values()) {
             long count = counts.getOrDefault(status, 0L);
             if (count > 0) {

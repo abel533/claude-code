@@ -92,7 +92,7 @@ public class WebSearchTool implements Tool {
             String html = fetchSearchPage(query);
             return parseResults(html, maxResults);
         } catch (Exception e) {
-            log.error("搜索失败: query={}", query, e);
+            log.error("Search failed: query={}", query, e);
             return "Error: Search failed - " + e.getMessage();
         }
     }

@@ -36,7 +36,7 @@ public class GitContext {
      */
     public GitContext collect() {
         if (!isGitRepo) {
-            log.debug("当前目录不是 Git 仓库: {}", projectDir);
+            log.debug("Current directory is not a Git repository: {}", projectDir);
             return this;
         }
 
@@ -114,7 +114,7 @@ public class GitContext {
             return output.toString().stripTrailing();
 
         } catch (Exception e) {
-            log.debug("Git 命令执行失败: {}", e.getMessage());
+            log.debug("Git command execution failed: {}", e.getMessage());
             return "";
         }
     }

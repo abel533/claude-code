@@ -37,20 +37,20 @@ public class SkillsCommand implements SlashCommand {
         sb.append("  ").append("─".repeat(50)).append("\n\n");
 
         if (skills.isEmpty()) {
-            sb.append(AnsiStyle.dim("  (无可用技能)\n\n"));
-            sb.append(AnsiStyle.dim("  技能文件放置位置：\n"));
-            sb.append(AnsiStyle.dim("    用户级:  ~/.claude/skills/*.md\n"));
-            sb.append(AnsiStyle.dim("    项目级:  ./.claude/skills/*.md\n"));
-            sb.append(AnsiStyle.dim("    命令级:  ./.claude/commands/*.md\n"));
+            sb.append(AnsiStyle.dim("  (No available skills)\n\n"));
+            sb.append(AnsiStyle.dim("  Skill file locations:\n"));
+            sb.append(AnsiStyle.dim("    User:    ~/.claude/skills/*.md\n"));
+            sb.append(AnsiStyle.dim("    Project: ./.claude/skills/*.md\n"));
+            sb.append(AnsiStyle.dim("    Command: ./.claude/commands/*.md\n"));
         } else {
             for (SkillLoader.Skill skill : skills) {
                 sb.append("  ").append(AnsiStyle.cyan("▸ ")).append(AnsiStyle.bold(skill.name()));
 
                 // 来源标签
                 String sourceLabel = switch (skill.source()) {
-                    case "user" -> AnsiStyle.dim(" [用户级]");
-                    case "project" -> AnsiStyle.dim(" [项目级]");
-                    case "command" -> AnsiStyle.dim(" [命令]");
+                    case "user" -> AnsiStyle.dim(" [user]");
+                    case "project" -> AnsiStyle.dim(" [project]");
+                    case "command" -> AnsiStyle.dim(" [command]");
                     default -> AnsiStyle.dim(" [" + skill.source() + "]");
                 };
                 sb.append(sourceLabel).append("\n");
@@ -64,7 +64,7 @@ public class SkillsCommand implements SlashCommand {
                 sb.append("    ").append(AnsiStyle.dim("File: " + skill.filePath())).append("\n");
                 sb.append("\n");
             }
-            sb.append(AnsiStyle.dim("  共 " + skills.size() + " 个技能\n"));
+            sb.append(AnsiStyle.dim("  Total " + skills.size() + " skills\n"));
         }
 
         return sb.toString();

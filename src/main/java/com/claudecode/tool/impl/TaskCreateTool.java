@@ -47,11 +47,11 @@ public class TaskCreateTool implements Tool {
                   "properties": {
                     "description": {
                       "type": "string",
-                      "description": "任务描述，说明这个任务要做什么"
+                      "description": "Task description, what this task should accomplish"
                     },
                     "metadata": {
                       "type": "string",
-                      "description": "可选的 JSON 格式元数据字符串，例如 {\\"priority\\":\\"high\\"}"
+                      "description": "Optional JSON metadata string, e.g. {\\"priority\\":\\"high\\"}"
                     }
                   },
                   "required": ["description"]
@@ -68,13 +68,13 @@ public class TaskCreateTool implements Tool {
         // 获取 TaskManager 实例
         TaskManager manager = context.get(TASK_MANAGER_KEY);
         if (manager == null) {
-            return errorJson("TaskManager 未初始化，请检查上下文配置");
+            return errorJson("TaskManager not initialized, check context configuration");
         }
 
         // 解析必填参数: description
         String desc = (String) input.get("description");
         if (desc == null || desc.isBlank()) {
-            return errorJson("参数 'description' 是必填项且不能为空");
+            return errorJson("Parameter 'description' is required and cannot be empty");
         }
 
         // 解析可选参数: metadata
@@ -94,7 +94,7 @@ public class TaskCreateTool implements Tool {
                   "task_id": "%s",
                   "description": "%s",
                   "status": "PENDING",
-                  "message": "任务已创建"
+                  "message": "Task created"
                 }""".formatted(escapeJson(taskId), escapeJson(desc));
     }
 

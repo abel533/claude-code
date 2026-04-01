@@ -132,7 +132,7 @@ public class ReplSession {
         try {
             startWithJLine();
         } catch (Exception e) {
-            log.warn("JLine 初始化失败，降级到 Scanner 模式: {}", e.getMessage());
+            log.warn("JLine initialization failed, downgrading to Scanner mode: {}", e.getMessage());
             startWithScanner();
         }
     }
@@ -150,7 +150,7 @@ public class ReplSession {
 
             boolean isDumb = "dumb".equals(terminal.getType());
             if (isDumb) {
-                log.info("当前为 dumb 终端模式，建议使用 Windows Terminal / PowerShell / cmd 获得完整体验");
+                log.info("Dumb terminal mode, use Windows Terminal / PowerShell / cmd for full experience");
             }
 
             // 配置 Parser：支持反斜杠续行 (\) 和 三引号块 (""")
@@ -172,7 +172,7 @@ public class ReplSession {
             String vimMode = System.getenv("CLAUDE_CODE_VIM");
             if ("1".equals(vimMode) || "true".equalsIgnoreCase(vimMode)) {
                 reader.setVariable(LineReader.EDITING_MODE, "vi");
-                log.info("已启用 Vim 编辑模式");
+                log.info("Vim editing mode enabled");
             }
 
             // 主提示符
@@ -241,7 +241,7 @@ public class ReplSession {
                     + AnsiStyle.dim("  Model: ") + AnsiStyle.cyan(providerInfo.model()));
             out.println(AnsiStyle.dim("  Work Dir: " + System.getProperty("user.dir")));
             if (isDumb) {
-                out.println(AnsiStyle.yellow("  ⚠ Dumb 终端模式：建议在 Windows Terminal / PowerShell 中运行"));
+                out.println(AnsiStyle.yellow("  ⚠ Dumb terminal mode: run in Windows Terminal / PowerShell for best experience"));
             }
         } else {
             // 标准终端用带边框的 Banner
@@ -343,7 +343,7 @@ public class ReplSession {
         } catch (Exception e) {
             spinner.stop();
             out.println(AnsiStyle.RED + "\n  ● Error: " + AnsiStyle.RESET + e.getMessage());
-            log.error("Agent 循环异常", e);
+            log.error("Agent loop exception", e);
             out.println();
         }
     }
@@ -355,7 +355,7 @@ public class ReplSession {
         if (history.size() > 2) {
             var file = persistence.save(history, conversationSummary);
             if (file != null) {
-                out.println(AnsiStyle.dim("  💾 对话已保存: " + file.getFileName()));
+                out.println(AnsiStyle.dim("  💾 Conversation saved: " + file.getFileName()));
             }
         }
     }
@@ -377,10 +377,10 @@ public class ReplSession {
      */
     private boolean promptPermission(AgentLoop.PermissionRequest request) {
         out.println();
-        out.println(AnsiStyle.yellow("  ⚠ 权限确认"));
+        out.println(AnsiStyle.yellow("  ⚠ Permission Required"));
         out.println("  " + "─".repeat(50));
-        out.println("  " + AnsiStyle.bold("工具: ") + AnsiStyle.cyan(request.toolName()));
-        out.println("  " + AnsiStyle.bold("操作: ") + request.activityDescription());
+        out.println("  " + AnsiStyle.bold("Tool: ") + AnsiStyle.cyan(request.toolName()));
+        out.println("  " + AnsiStyle.bold("Action: ") + request.activityDescription());
 
         // 显示参数摘要（截断过长的参数）
         String argsPreview = request.arguments();
@@ -388,11 +388,11 @@ public class ReplSession {
             argsPreview = argsPreview.substring(0, 200) + "...";
         }
         if (argsPreview != null && !argsPreview.isBlank()) {
-            out.println("  " + AnsiStyle.dim("参数: " + argsPreview));
+            out.println("  " + AnsiStyle.dim("Args: " + argsPreview));
         }
 
         out.println("  " + "─".repeat(50));
-        out.print("  " + AnsiStyle.bold("允许执行？") + AnsiStyle.dim(" [Y/n/always] ") + AnsiStyle.BOLD + AnsiStyle.BRIGHT_CYAN + "→ " + AnsiStyle.RESET);
+        out.print("  " + AnsiStyle.bold("Allow execution?") + AnsiStyle.dim(" [Y/n/always] ") + AnsiStyle.BOLD + AnsiStyle.BRIGHT_CYAN + "→ " + AnsiStyle.RESET);
         out.flush();
 
         String answer = readLineForPermission();
@@ -403,7 +403,7 @@ public class ReplSession {
         // "always" → 禁用后续权限确认
         if (answer.equals("always") || answer.equals("a")) {
             agentLoop.setOnPermissionRequest(null); // 移除权限回调
-            out.println(AnsiStyle.green("  ✓ 已授权所有后续操作"));
+            out.println(AnsiStyle.green("  ✓ All subsequent operations authorized"));
             return true;
         }
 
@@ -413,7 +413,7 @@ public class ReplSession {
         }
 
         // 其他输入 → 拒绝
-        out.println(AnsiStyle.red("  ✗ 操作已拒绝"));
+        out.println(AnsiStyle.red("  ✗ Operation denied"));
         return false;
     }
 
@@ -426,7 +426,7 @@ public class ReplSession {
                 return activeScanner.nextLine();
             }
         } catch (Exception e) {
-            log.debug("读取权限确认输入异常: {}", e.getMessage());
+            log.debug("Permission confirmation input exception: {}", e.getMessage());
         }
         return null;
     }
@@ -450,9 +450,9 @@ public class ReplSession {
                 return activeScanner.nextLine();
             }
         } catch (UserInterruptException e) {
-            return "(用户取消)";
+            return "(User cancelled)";
         } catch (Exception e) {
-            log.debug("读取用户输入异常: {}", e.getMessage());
+            log.debug("User input read exception: {}", e.getMessage());
         }
         return null;
     }

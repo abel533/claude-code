@@ -44,7 +44,7 @@ public class BranchCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.red("  ✗ AgentLoop 不可用。");
+            return AnsiStyle.red("  ✗ AgentLoop unavailable.");
         }
 
         String trimmedArgs = args != null ? args.trim() : "";
@@ -63,7 +63,7 @@ public class BranchCommand implements SlashCommand {
             case "load" -> loadBranch(branchName, context);
             case "list" -> listBranches(context);
             case "delete" -> deleteBranch(branchName);
-            default -> AnsiStyle.red("  ✗ 未知子命令: " + subCommand) + "\n" + showUsage();
+            default -> AnsiStyle.red("  ✗ Unknown subcommand: " + subCommand) + "\n" + showUsage();
         };
     }
 
@@ -76,8 +76,8 @@ public class BranchCommand implements SlashCommand {
      */
     private String saveBranch(String branchName, CommandContext context) {
         if (branchName.isEmpty()) {
-            return AnsiStyle.red("  ✗ 请指定分支名称。") + "\n"
-                    + AnsiStyle.dim("  用法: /branch save <name>");
+            return AnsiStyle.red("  ✗ Please specify branch name.") + "\n"
+                    + AnsiStyle.dim("  Usage: /branch save <name>");
         }
 
         List<Message> currentHistory = context.agentLoop().getMessageHistory();
@@ -87,8 +87,8 @@ public class BranchCommand implements SlashCommand {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         branches.put(branchName, new BranchSnapshot(snapshot, timestamp));
 
-        return AnsiStyle.green("  ✓ 分支已保存: ") + AnsiStyle.bold(branchName) + "\n"
-                + AnsiStyle.dim("    消息数: " + snapshot.size() + "  时间: " + timestamp);
+        return AnsiStyle.green("  ✓ Branch saved: ") + AnsiStyle.bold(branchName) + "\n"
+                + AnsiStyle.dim("    Messages: " + snapshot.size() + "  Time: " + timestamp);
     }
 
     /**
@@ -100,21 +100,21 @@ public class BranchCommand implements SlashCommand {
      */
     private String loadBranch(String branchName, CommandContext context) {
         if (branchName.isEmpty()) {
-            return AnsiStyle.red("  ✗ 请指定分支名称。") + "\n"
-                    + AnsiStyle.dim("  用法: /branch load <name>");
+            return AnsiStyle.red("  ✗ Please specify branch name.") + "\n"
+                    + AnsiStyle.dim("  Usage: /branch load <name>");
         }
 
         BranchSnapshot snapshot = branches.get(branchName);
         if (snapshot == null) {
-            return AnsiStyle.red("  ✗ 分支不存在: " + branchName) + "\n"
-                    + AnsiStyle.dim("  使用 /branch list 查看所有可用分支。");
+            return AnsiStyle.red("  ✗ Branch not found: " + branchName) + "\n"
+                    + AnsiStyle.dim("  Use /branch list to see all available branches.");
         }
 
         // 恢复对话历史
         context.agentLoop().replaceHistory(new ArrayList<>(snapshot.messages()));
 
-        return AnsiStyle.green("  ✓ 已恢复到分支: ") + AnsiStyle.bold(branchName) + "\n"
-                + AnsiStyle.dim("    已加载 " + snapshot.messages().size() + " 条消息 (保存于 " + snapshot.timestamp() + ")");
+        return AnsiStyle.green("  ✓ Restored to branch: ") + AnsiStyle.bold(branchName) + "\n"
+                + AnsiStyle.dim("    Loaded " + snapshot.messages().size() + " messages (saved at " + snapshot.timestamp() + ")");
     }
 
     /**
@@ -125,8 +125,8 @@ public class BranchCommand implements SlashCommand {
      */
     private String listBranches(CommandContext context) {
         if (branches.isEmpty()) {
-            return AnsiStyle.dim("  没有保存的分支。") + "\n"
-                    + AnsiStyle.dim("  使用 /branch save <name> 保存当前对话。");
+            return AnsiStyle.dim("  No saved branches.") + "\n"
+                    + AnsiStyle.dim("  Use /branch save <name> to save current conversation.");
         }
 
         int currentSize = context.agentLoop().getMessageHistory().size();
@@ -149,7 +149,7 @@ public class BranchCommand implements SlashCommand {
                     .append("\n");
         }
 
-        sb.append("\n").append(AnsiStyle.dim("  共 " + branches.size() + " 个分支。")).append("\n");
+        sb.append("\n").append(AnsiStyle.dim("  Total " + branches.size() + " branches.")).append("\n");
         return sb.toString();
     }
 
@@ -161,16 +161,16 @@ public class BranchCommand implements SlashCommand {
      */
     private String deleteBranch(String branchName) {
         if (branchName.isEmpty()) {
-            return AnsiStyle.red("  ✗ 请指定分支名称。") + "\n"
-                    + AnsiStyle.dim("  用法: /branch delete <name>");
+            return AnsiStyle.red("  ✗ Please specify branch name.") + "\n"
+                    + AnsiStyle.dim("  Usage: /branch delete <name>");
         }
 
         BranchSnapshot removed = branches.remove(branchName);
         if (removed == null) {
-            return AnsiStyle.red("  ✗ 分支不存在: " + branchName);
+            return AnsiStyle.red("  ✗ Branch not found: " + branchName);
         }
 
-        return AnsiStyle.green("  ✓ 分支已删除: ") + AnsiStyle.bold(branchName);
+        return AnsiStyle.green("  ✓ Branch deleted: ") + AnsiStyle.bold(branchName);
     }
 
     /**
@@ -180,11 +180,11 @@ public class BranchCommand implements SlashCommand {
      */
     private String showUsage() {
         StringBuilder sb = new StringBuilder();
-        sb.append(AnsiStyle.bold("\n  🌿 Branch — 对话分支管理\n\n"));
-        sb.append("  ").append(AnsiStyle.cyan("/branch save <name>")).append("    保存当前对话为分支\n");
-        sb.append("  ").append(AnsiStyle.cyan("/branch load <name>")).append("    恢复到指定分支\n");
-        sb.append("  ").append(AnsiStyle.cyan("/branch list")).append("            列出所有分支\n");
-        sb.append("  ").append(AnsiStyle.cyan("/branch delete <name>")).append("  删除指定分支\n");
+        sb.append(AnsiStyle.bold("\n  🌿 Branch — Conversation branch management\n\n"));
+        sb.append("  ").append(AnsiStyle.cyan("/branch save <name>")).append("    Save current conversation as branch\n");
+        sb.append("  ").append(AnsiStyle.cyan("/branch load <name>")).append("    Restore to specified branch\n");
+        sb.append("  ").append(AnsiStyle.cyan("/branch list")).append("            List all branches\n");
+        sb.append("  ").append(AnsiStyle.cyan("/branch delete <name>")).append("  Delete specified branch\n");
         return sb.toString();
     }
 

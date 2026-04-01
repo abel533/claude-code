@@ -32,7 +32,7 @@ public class HooksCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null || context.agentLoop().getHookManager() == null) {
-            return AnsiStyle.yellow("  ⚠ Hook 管理器不可用。");
+            return AnsiStyle.yellow("  ⚠ Hook manager unavailable.");
         }
 
         HookManager hookManager = context.agentLoop().getHookManager();
@@ -86,10 +86,10 @@ public class HooksCommand implements SlashCommand {
      */
     private String formatTypeName(HookType type) {
         return switch (type) {
-            case PRE_TOOL_USE -> "PRE_TOOL_USE (工具执行前)";
-            case POST_TOOL_USE -> "POST_TOOL_USE (工具执行后)";
-            case PRE_PROMPT -> "PRE_PROMPT (发送提示前)";
-            case POST_RESPONSE -> "POST_RESPONSE (收到响应后)";
+            case PRE_TOOL_USE -> "PRE_TOOL_USE (before tool execution)";
+            case POST_TOOL_USE -> "POST_TOOL_USE (after tool execution)";
+            case PRE_PROMPT -> "PRE_PROMPT (before sending prompt)";
+            case POST_RESPONSE -> "POST_RESPONSE (after receiving response)";
         };
     }
 }

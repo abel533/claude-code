@@ -22,14 +22,14 @@ import java.util.List;
 public class CompactCommand implements SlashCommand {
 
     private static final String COMPACT_PROMPT = """
-            请将以下对话历史压缩为一段简洁的摘要。要求：
-            1. 保留所有关键决策、代码变更和技术细节
-            2. 保留文件路径、函数名等具体信息
-            3. 保留用户的偏好和要求
-            4. 省略重复的讨论和无关的细节
-            5. 用中文输出，控制在500字以内
+            Please compress the following conversation history into a concise summary. Requirements:
+            1. Preserve all key decisions, code changes, and technical details
+            2. Keep file paths, function names, and specific information
+            3. Preserve user preferences and requirements
+            4. Omit repeated discussions and irrelevant details
+            5. Output within 500 words
             
-            对话历史：
+            Conversation history:
             """;
 
     @Override
@@ -45,14 +45,14 @@ public class CompactCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.yellow("  ⚠ 没有活跃的对话可压缩。");
+            return AnsiStyle.yellow("  ⚠ No active conversation to compact.");
         }
 
         List<Message> history = context.agentLoop().getMessageHistory();
         int before = history.size();
 
         if (before <= 3) {
-            return AnsiStyle.dim("  上下文已经很小（" + before + " 条消息），无需压缩。");
+            return AnsiStyle.dim("  Context is already small (" + before + " messages), no compaction needed.");
         }
 
         TokenTracker tracker = context.agentLoop().getTokenTracker();
@@ -66,7 +66,7 @@ public class CompactCommand implements SlashCommand {
         compacted.add(history.getFirst()); // 原始系统提示词
 
         if (summary != null && !summary.isBlank()) {
-            compacted.add(new SystemMessage("[对话历史摘要] " + summary));
+            compacted.add(new SystemMessage("[Conversation Summary] " + summary));
         }
 
         // 保留最后一轮用户消息和助手回复（如果有）
@@ -78,15 +78,15 @@ public class CompactCommand implements SlashCommand {
         int after = compacted.size();
 
         StringBuilder sb = new StringBuilder();
-        sb.append(AnsiStyle.green("  ✅ 上下文已压缩")).append("\n");
-        sb.append("  消息数: ").append(before).append(" → ").append(after).append("\n");
+        sb.append(AnsiStyle.green("  ✅ Context compacted")).append("\n");
+        sb.append("  Messages: ").append(before).append(" → ").append(after).append("\n");
         if (tokensBefore > 0) {
-            sb.append("  压缩前累计 Token: ").append(TokenTracker.formatTokens(tokensBefore)).append("\n");
+            sb.append("  Tokens before compaction: ").append(TokenTracker.formatTokens(tokensBefore)).append("\n");
         }
         if (summary != null) {
-            sb.append(AnsiStyle.dim("  📝 AI 摘要已生成并注入上下文"));
+            sb.append(AnsiStyle.dim("  📝 AI summary generated and injected into context"));
         } else {
-            sb.append(AnsiStyle.dim("  ⚠ AI 摘要生成失败，仅保留最近对话"));
+            sb.append(AnsiStyle.dim("  ⚠ AI summary generation failed, keeping recent conversation only"));
         }
 
         return sb.toString();
@@ -101,17 +101,17 @@ public class CompactCommand implements SlashCommand {
             StringBuilder dialogText = new StringBuilder();
             for (Message msg : history) {
                 switch (msg) {
-                    case UserMessage um -> dialogText.append("[用户] ").append(um.getText()).append("\n");
+                    case UserMessage um -> dialogText.append("[User] ").append(um.getText()).append("\n");
                     case AssistantMessage am -> {
                         if (am.getText() != null && !am.getText().isBlank()) {
                             // 截断过长的助手回复
                             String text = am.getText();
                             if (text.length() > 500) text = text.substring(0, 500) + "...";
-                            dialogText.append("[助手] ").append(text).append("\n");
+                            dialogText.append("[Assistant] ").append(text).append("\n");
                         }
                         if (am.hasToolCalls()) {
                             for (var tc : am.getToolCalls()) {
-                                dialogText.append("[工具调用] ").append(tc.name()).append("\n");
+                                dialogText.append("[Tool Call] ").append(tc.name()).append("\n");
                             }
                         }
                     }

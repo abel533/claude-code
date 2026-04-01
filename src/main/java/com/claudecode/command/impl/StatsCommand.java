@@ -38,12 +38,12 @@ public class StatsCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.red("  ✗ AgentLoop 不可用。");
+            return AnsiStyle.red("  ✗ AgentLoop unavailable.");
         }
 
         TokenTracker tracker = context.agentLoop().getTokenTracker();
         if (tracker == null) {
-            return AnsiStyle.yellow("  ⚠ Token 追踪器不可用。");
+            return AnsiStyle.yellow("  ⚠ Token tracker unavailable.");
         }
 
         // 收集统计数据

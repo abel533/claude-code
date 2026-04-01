@@ -22,14 +22,14 @@ public class ToolRegistry {
      */
     public void register(Tool tool) {
         if (!tool.isEnabled()) {
-            log.debug("工具 [{}] 未启用，跳过注册", tool.name());
+            log.debug("Tool [{}] not enabled, skipping registration", tool.name());
             return;
         }
         if (tools.containsKey(tool.name())) {
-            log.warn("工具 [{}] 已注册，将被覆盖", tool.name());
+            log.warn("Tool [{}] already registered, will be overridden", tool.name());
         }
         tools.put(tool.name(), tool);
-        log.debug("注册工具: [{}]", tool.name());
+        log.debug("Registered tool: [{}]", tool.name());
     }
 
     /** 批量注册 */

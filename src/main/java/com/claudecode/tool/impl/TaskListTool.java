@@ -47,7 +47,7 @@ public class TaskListTool implements Tool {
                   "properties": {
                     "status": {
                       "type": "string",
-                      "description": "按状态过滤：PENDING / RUNNING / COMPLETED / FAILED / CANCELLED",
+                      "description": "Filter by status: PENDING / RUNNING / COMPLETED / FAILED / CANCELLED",
                       "enum": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]
                     }
                   },
@@ -65,7 +65,7 @@ public class TaskListTool implements Tool {
         // 获取 TaskManager 实例
         TaskManager manager = context.get(TASK_MANAGER_KEY);
         if (manager == null) {
-            return errorJson("TaskManager 未初始化，请检查上下文配置");
+            return errorJson("TaskManager not initialized, check context configuration");
         }
 
         // 解析可选参数: status
@@ -75,8 +75,8 @@ public class TaskListTool implements Tool {
             try {
                 statusFilter = TaskStatus.valueOf(statusStr.trim().toUpperCase());
             } catch (IllegalArgumentException e) {
-                return errorJson("无效的状态值: '" + statusStr
-                        + "'。可选值: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED");
+                return errorJson("Invalid status value: '" + statusStr
+                        + "'. Valid values: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED");
             }
         }
 

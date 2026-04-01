@@ -36,7 +36,7 @@ public class DiffCommand implements SlashCommand {
     public String execute(String args, CommandContext context) {
         Path projectDir = Path.of(System.getProperty("user.dir"));
         if (!Files.isDirectory(projectDir.resolve(".git"))) {
-            return AnsiStyle.yellow("  ⚠ 当前目录不是 Git 仓库");
+            return AnsiStyle.yellow("  ⚠ Current directory is not a Git repository");
         }
 
         args = args == null ? "" : args.strip();
@@ -72,7 +72,7 @@ public class DiffCommand implements SlashCommand {
                     long lineCount = unstaged.lines().count();
                     if (lineCount > 100) {
                         unstaged.lines().limit(100).forEach(l -> sb.append("    ").append(l).append("\n"));
-                        sb.append(AnsiStyle.dim("    ... (共 " + lineCount + " 行，截断显示前100行)\n"));
+                        sb.append(AnsiStyle.dim("    ... (" + lineCount + " lines total, showing first 100)\n"));
                     } else {
                         unstaged.lines().forEach(l -> sb.append("    ").append(l).append("\n"));
                     }
@@ -84,7 +84,7 @@ public class DiffCommand implements SlashCommand {
                 }
 
                 if (staged.isBlank() && unstaged.isBlank() && untracked.isBlank()) {
-                    sb.append("\n").append(AnsiStyle.green("  ✓ 工作区干净，无变更\n"));
+                    sb.append("\n").append(AnsiStyle.green("  ✓ Working directory clean, no changes\n"));
                 }
 
                 return sb.toString();
@@ -96,12 +96,12 @@ public class DiffCommand implements SlashCommand {
             sb.append("  ").append("─".repeat(50)).append("\n\n");
 
             if (diffOutput.isBlank()) {
-                sb.append(AnsiStyle.green("  ✓ 无变更\n"));
+                sb.append(AnsiStyle.green("  ✓ No changes\n"));
             } else {
                 long lineCount = diffOutput.lines().count();
                 if (lineCount > 100) {
                     diffOutput.lines().limit(100).forEach(l -> sb.append("  ").append(l).append("\n"));
-                    sb.append(AnsiStyle.dim("  ... (共 " + lineCount + " 行)\n"));
+                    sb.append(AnsiStyle.dim("  ... (" + lineCount + " lines)\n"));
                 } else {
                     diffOutput.lines().forEach(l -> sb.append("  ").append(l).append("\n"));
                 }
@@ -110,7 +110,7 @@ public class DiffCommand implements SlashCommand {
             return sb.toString();
 
         } catch (Exception e) {
-            return AnsiStyle.red("  ✗ Git diff 执行失败: " + e.getMessage());
+            return AnsiStyle.red("  ✗ Git diff failed: " + e.getMessage());
         }
     }
 

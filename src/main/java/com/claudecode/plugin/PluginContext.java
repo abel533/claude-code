@@ -35,9 +35,9 @@ public class PluginContext {
      * @throws NullPointerException 如果任何参数为 null
      */
     public PluginContext(ToolContext toolContext, String workDir, String pluginId) {
-        this.toolContext = Objects.requireNonNull(toolContext, "toolContext 不能为 null");
-        this.workDir = Objects.requireNonNull(workDir, "workDir 不能为 null");
-        Objects.requireNonNull(pluginId, "pluginId 不能为 null");
+        this.toolContext = Objects.requireNonNull(toolContext, "toolContext cannot be null");
+        this.workDir = Objects.requireNonNull(workDir, "workDir cannot be null");
+        Objects.requireNonNull(pluginId, "pluginId cannot be null");
         this.pluginLogger = LoggerFactory.getLogger("plugin." + pluginId);
     }
 

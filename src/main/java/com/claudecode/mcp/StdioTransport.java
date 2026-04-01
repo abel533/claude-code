@@ -85,7 +85,7 @@ public class StdioTransport implements McpTransport {
             cmdList.add(command);
             cmdList.addAll(args);
 
-            log.info("启动 MCP 服务器进程: {}", String.join(" ", cmdList));
+            log.info("Starting MCP server process: {}", String.join(" ", cmdList));
 
             ProcessBuilder pb = new ProcessBuilder(cmdList);
             pb.redirectErrorStream(false); // stderr 单独处理
@@ -108,10 +108,10 @@ public class StdioTransport implements McpTransport {
             stderrThread = Thread.ofVirtual().name("mcp-stdio-stderr").start(this::stderrLoop);
 
             connected = true;
-            log.info("MCP 服务器进程已启动 (PID: {})", process.pid());
+            log.info("MCP server process started (PID: {})", process.pid());
 
         } catch (IOException e) {
-            throw new McpException("启动 MCP 服务器进程失败: " + e.getMessage(), e);
+            throw new McpException("Failed to start MCP server process: " + e.getMessage(), e);
         }
     }
 
@@ -133,18 +133,18 @@ public class StdioTransport implements McpTransport {
                     JsonNode message = MAPPER.readTree(line);
                     handleMessage(message);
                 } catch (Exception e) {
-                    log.warn("解析 MCP 响应失败: {}", line, e);
+                    log.warn("Failed to parse MCP response: {}", line, e);
                 }
             }
         } catch (IOException e) {
             if (connected) {
-                log.warn("MCP stdout 读取中断: {}", e.getMessage());
+                log.warn("MCP stdout read interrupted: {}", e.getMessage());
             }
         } finally {
             connected = false;
             // 清理所有等待中的请求
             pendingRequests.forEach((id, future) ->
-                    future.completeExceptionally(new McpException("MCP 连接已断开")));
+                    future.completeExceptionally(new McpException("MCP connection disconnected")));
             pendingRequests.clear();
         }
     }
@@ -182,19 +182,19 @@ public class StdioTransport implements McpTransport {
             if (future != null) {
                 future.complete(message);
             } else {
-                log.warn("收到未匹配的 MCP 响应 (id={}): {}", id, message);
+                log.warn("Received unmatched MCP response (id={}): {}", id, message);
             }
         } else {
             // 服务器主动通知（如 notifications/tools/list_changed）
             String method = message.has("method") ? message.get("method").asText() : "unknown";
-            log.debug("收到 MCP 服务器通知: {}", method);
+            log.debug("Received MCP server notification: {}", method);
         }
     }
 
     @Override
     public JsonNode sendRequest(String jsonRpcRequest) throws McpException {
         if (!connected) {
-            throw new McpException("MCP 传输层未连接");
+            throw new McpException("MCP transport not connected");
         }
 
         String id = null;
@@ -203,7 +203,7 @@ public class StdioTransport implements McpTransport {
             JsonNode requestNode = MAPPER.readTree(jsonRpcRequest);
             JsonNode idNode = requestNode.get("id");
             if (idNode == null || idNode.isNull()) {
-                throw new McpException("JSON-RPC 请求缺少 id 字段");
+                throw new McpException("JSON-RPC request missing id field");
             }
             id = idNode.asText();
 
@@ -218,7 +218,7 @@ public class StdioTransport implements McpTransport {
                 processStdin.flush();
             }
 
-            log.debug("发送 MCP 请求 (id={}): {}", id, truncate(jsonRpcRequest, 200));
+            log.debug("Sent MCP request (id={}): {}", id, truncate(jsonRpcRequest, 200));
 
             // 等待响应
             JsonNode response = future.get(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -227,8 +227,8 @@ public class StdioTransport implements McpTransport {
             JsonNode errorNode = response.get("error");
             if (errorNode != null && !errorNode.isNull()) {
                 int code = errorNode.has("code") ? errorNode.get("code").asInt() : -1;
-                String msg = errorNode.has("message") ? errorNode.get("message").asText() : "未知错误";
-                throw new McpException("MCP 服务器返回错误: " + msg, code);
+                String msg = errorNode.has("message") ? errorNode.get("message").asText() : "Unknown error";
+                throw new McpException("MCP server returned error: " + msg, code);
             }
 
             return response;
@@ -236,15 +236,15 @@ public class StdioTransport implements McpTransport {
         } catch (McpException e) {
             throw e;
         } catch (TimeoutException e) {
-            throw new McpException("MCP 请求超时 (" + DEFAULT_TIMEOUT_SECONDS + "s)", e);
+            throw new McpException("MCP request timeout (" + DEFAULT_TIMEOUT_SECONDS + "s)", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof McpException mcp) {
                 throw mcp;
             }
-            throw new McpException("MCP 请求执行异常: " + cause.getMessage(), cause);
+            throw new McpException("MCP request execution exception: " + cause.getMessage(), cause);
         } catch (Exception e) {
-            throw new McpException("MCP 请求发送失败: " + e.getMessage(), e);
+            throw new McpException("MCP request send failed: " + e.getMessage(), e);
         } finally {
             // 无论成功、超时或异常，都清理待处理请求，防止内存泄漏
             if (id != null) {
@@ -256,7 +256,7 @@ public class StdioTransport implements McpTransport {
     @Override
     public void sendNotification(String jsonRpcNotification) throws McpException {
         if (!connected) {
-            throw new McpException("MCP 传输层未连接");
+            throw new McpException("MCP transport not connected");
         }
 
         try {
@@ -265,9 +265,9 @@ public class StdioTransport implements McpTransport {
                 processStdin.newLine();
                 processStdin.flush();
             }
-            log.debug("发送 MCP 通知: {}", truncate(jsonRpcNotification, 200));
+            log.debug("Sent MCP notification: {}", truncate(jsonRpcNotification, 200));
         } catch (IOException e) {
-            throw new McpException("MCP 通知发送失败: " + e.getMessage(), e);
+            throw new McpException("MCP notification send failed: " + e.getMessage(), e);
         }
     }
 
@@ -279,14 +279,14 @@ public class StdioTransport implements McpTransport {
     @Override
     public void close() throws Exception {
         connected = false;
-        log.info("关闭 MCP StdIO 传输...");
+        log.info("Closing MCP StdIO transport...");
 
         // 关闭 stdin（通知服务器退出）
         if (processStdin != null) {
             try {
                 processStdin.close();
             } catch (IOException e) {
-                log.debug("关闭 stdin 时异常: {}", e.getMessage());
+                log.debug("Exception closing stdin: {}", e.getMessage());
             }
         }
 
@@ -294,7 +294,7 @@ public class StdioTransport implements McpTransport {
         if (process != null && process.isAlive()) {
             boolean exited = process.waitFor(5, TimeUnit.SECONDS);
             if (!exited) {
-                log.warn("MCP 服务器进程未在 5s 内退出，强制终止");
+                log.warn("MCP server process did not exit within 5s, force terminating");
                 process.destroyForcibly();
                 process.waitFor(3, TimeUnit.SECONDS);
             }
@@ -310,10 +310,10 @@ public class StdioTransport implements McpTransport {
 
         // 清理待处理请求
         pendingRequests.forEach((id, future) ->
-                future.completeExceptionally(new McpException("MCP 传输已关闭")));
+                future.completeExceptionally(new McpException("MCP transport closed")));
         pendingRequests.clear();
 
-        log.info("MCP StdIO 传输已关闭");
+        log.info("MCP StdIO transport closed");
     }
 
     /**

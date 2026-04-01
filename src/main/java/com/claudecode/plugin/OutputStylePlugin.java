@@ -55,13 +55,13 @@ public class OutputStylePlugin implements Plugin {
 
     @Override
     public String description() {
-        return "自定义输出样式";
+        return "Custom output styles";
     }
 
     @Override
     public void initialize(PluginContext context) {
         this.context = context;
-        context.getLogger().info("输出样式插件已初始化，当前样式: {}", currentStyle.get());
+        context.getLogger().info("Output style plugin initialized, current style: {}", currentStyle.get());
     }
 
     @Override
@@ -95,7 +95,7 @@ public class OutputStylePlugin implements Plugin {
     @Override
     public void destroy() {
         if (context != null) {
-            context.getLogger().info("输出样式插件已销毁");
+            context.getLogger().info("Output style plugin destroyed");
         }
     }
 
@@ -135,8 +135,8 @@ public class OutputStylePlugin implements Plugin {
 
             // 切换样式
             if (!SUPPORTED_STYLES.contains(trimmed)) {
-                return AnsiStyle.red("  ✗ 未知样式: " + trimmed) + "\n"
-                        + AnsiStyle.dim("  可用样式: default, minimal, verbose, markdown");
+                return AnsiStyle.red("  ✗ Unknown style: " + trimmed) + "\n"
+                        + AnsiStyle.dim("  Available styles: default, minimal, verbose, markdown");
             }
 
             String oldStyle = currentStyle.getAndSet(trimmed);
@@ -151,10 +151,10 @@ public class OutputStylePlugin implements Plugin {
             }
 
             if (context != null) {
-                context.getLogger().info("输出样式切换: {} → {}", oldStyle, trimmed);
+                context.getLogger().info("Output style switched: {} → {}", oldStyle, trimmed);
             }
 
-            return AnsiStyle.green("  ✓ 输出样式已切换: ")
+            return AnsiStyle.green("  ✓ Output style switched: ")
                     + AnsiStyle.bold(oldStyle)
                     + " → "
                     + AnsiStyle.bold(AnsiStyle.cyan(trimmed))
@@ -182,7 +182,7 @@ public class OutputStylePlugin implements Plugin {
                         .append(AnsiStyle.dim(" - " + desc)).append("\n");
             }
 
-            sb.append("\n").append(AnsiStyle.dim("  用法: /style <name>")).append("\n");
+            sb.append("\n").append(AnsiStyle.dim("  Usage: /style <name>")).append("\n");
             return sb.toString();
         }
 
@@ -191,11 +191,11 @@ public class OutputStylePlugin implements Plugin {
          */
         private String getStyleBrief(String style) {
             return switch (style) {
-                case "default" -> "默认彩色输出";
-                case "minimal" -> "精简输出，无颜色";
-                case "verbose" -> "详细输出，含调试信息";
-                case "markdown" -> "纯 Markdown 输出";
-                default -> "未知样式";
+                case "default" -> "Default colorful output";
+                case "minimal" -> "Minimal output, no colors";
+                case "verbose" -> "Verbose output with debug info";
+                case "markdown" -> "Pure Markdown output";
+                default -> "Unknown style";
             };
         }
 
@@ -204,10 +204,10 @@ public class OutputStylePlugin implements Plugin {
          */
         private String getStyleDescription(String style) {
             return switch (style) {
-                case "default" -> AnsiStyle.dim("  使用 ANSI 颜色和格式的标准输出模式");
-                case "minimal" -> AnsiStyle.dim("  无颜色无装饰的精简输出，适合管道和日志");
-                case "verbose" -> AnsiStyle.dim("  包含时间戳、调试信息的详细输出模式");
-                case "markdown" -> AnsiStyle.dim("  纯 Markdown 格式，适合导出到文档");
+                case "default" -> AnsiStyle.dim("  Standard output mode with ANSI colors and formatting");
+                case "minimal" -> AnsiStyle.dim("  Minimal output without colors, suitable for pipes and logs");
+                case "verbose" -> AnsiStyle.dim("  Verbose output mode with timestamps and debug info");
+                case "markdown" -> AnsiStyle.dim("  Pure Markdown format, suitable for export to documents");
                 default -> "";
             };
         }

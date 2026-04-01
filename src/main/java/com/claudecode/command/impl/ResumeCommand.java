@@ -41,8 +41,8 @@ public class ResumeCommand implements SlashCommand {
         args = args == null ? "" : args.strip();
 
         if (conversations.isEmpty()) {
-            return AnsiStyle.yellow("  ⚠ 没有已保存的对话\n")
-                    + AnsiStyle.dim("  对话在退出时自动保存到 ~/.claude-code-java/conversations/");
+            return AnsiStyle.yellow("  ⚠ No saved conversations\n")
+                    + AnsiStyle.dim("  Conversations are auto-saved on exit to ~/.claude-code-java/conversations/");
         }
 
         // /resume list —— 列出所有对话
@@ -56,10 +56,10 @@ public class ResumeCommand implements SlashCommand {
             try {
                 index = Integer.parseInt(args) - 1;
                 if (index < 0 || index >= conversations.size()) {
-                    return AnsiStyle.red("  ✗ 无效序号（范围 1-" + conversations.size() + "）");
+                    return AnsiStyle.red("  ✗ Invalid index (range 1-" + conversations.size() + ")");
                 }
             } catch (NumberFormatException e) {
-                return AnsiStyle.yellow("  ⚠ 用法: /resume [序号] 或 /resume list");
+                return AnsiStyle.yellow("  ⚠ Usage: /resume [index] or /resume list");
             }
         }
 
@@ -69,7 +69,7 @@ public class ResumeCommand implements SlashCommand {
         List<Message> messages = persistence.loadFromFile(file);
 
         if (messages.isEmpty()) {
-            return AnsiStyle.red("  ✗ 加载对话失败: " + summary.filename());
+            return AnsiStyle.red("  ✗ Failed to load conversation: " + summary.filename());
         }
 
         // 替换当前消息历史
@@ -77,12 +77,12 @@ public class ResumeCommand implements SlashCommand {
 
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
-        sb.append(AnsiStyle.green("  ✓ 对话已恢复\n"));
+        sb.append(AnsiStyle.green("  ✓ Conversation restored\n"));
         sb.append("  ").append("─".repeat(50)).append("\n");
-        sb.append("  ").append(AnsiStyle.bold("摘要:   ")).append(summary.summary()).append("\n");
-        sb.append("  ").append(AnsiStyle.bold("时间:   ")).append(summary.savedAt()).append("\n");
-        sb.append("  ").append(AnsiStyle.bold("消息数: ")).append(summary.messageCount()).append("\n");
-        sb.append("  ").append(AnsiStyle.bold("目录:   ")).append(AnsiStyle.dim(summary.workingDir())).append("\n");
+        sb.append("  ").append(AnsiStyle.bold("Summary:  ")).append(summary.summary()).append("\n");
+        sb.append("  ").append(AnsiStyle.bold("Time:     ")).append(summary.savedAt()).append("\n");
+        sb.append("  ").append(AnsiStyle.bold("Messages: ")).append(summary.messageCount()).append("\n");
+        sb.append("  ").append(AnsiStyle.bold("Dir:      ")).append(AnsiStyle.dim(summary.workingDir())).append("\n");
 
         return sb.toString();
     }
@@ -104,10 +104,10 @@ public class ResumeCommand implements SlashCommand {
         }
 
         if (conversations.size() > maxShow) {
-            sb.append(AnsiStyle.dim("\n  ... 还有 " + (conversations.size() - maxShow) + " 个对话\n"));
+            sb.append(AnsiStyle.dim("\n  ... and " + (conversations.size() - maxShow) + " more conversations\n"));
         }
 
-        sb.append(AnsiStyle.dim("\n  使用 /resume [序号] 恢复指定对话\n"));
+        sb.append(AnsiStyle.dim("\n  Use /resume [index] to restore a conversation\n"));
 
         return sb.toString();
     }

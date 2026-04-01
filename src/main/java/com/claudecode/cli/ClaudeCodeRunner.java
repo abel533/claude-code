@@ -24,7 +24,7 @@ public class ClaudeCodeRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("Claude Code (Java) 启动中...");
+        log.info("Claude Code (Java) starting...");
         replSession.start();
     }
 }

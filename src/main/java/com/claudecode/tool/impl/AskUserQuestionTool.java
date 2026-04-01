@@ -78,7 +78,7 @@ public class AskUserQuestionTool implements Tool {
         // 获取用户输入回调
         Object callback = context.get(USER_INPUT_CALLBACK);
         if (callback == null) {
-            log.warn("未注册用户输入回调（USER_INPUT_CALLBACK），返回默认回复");
+            log.warn("User input callback not registered (USER_INPUT_CALLBACK), returning default response");
             return "Error: User input not available in current environment";
         }
 
@@ -91,7 +91,7 @@ public class AskUserQuestionTool implements Tool {
 
             // 构建提问文本
             StringBuilder prompt = new StringBuilder();
-            prompt.append("\n  🤔 AI 正在向你提问：\n");
+            prompt.append("\n  🤔 AI is asking you a question:\n");
             prompt.append("  ").append("─".repeat(50)).append("\n");
             prompt.append("  ").append(question).append("\n");
 
@@ -99,7 +99,7 @@ public class AskUserQuestionTool implements Tool {
             if (input.containsKey("options")) {
                 var options = (java.util.List<String>) input.get("options");
                 if (options != null && !options.isEmpty()) {
-                    prompt.append("\n  可选项：\n");
+                    prompt.append("\n  Options:\n");
                     for (int i = 0; i < options.size(); i++) {
                         prompt.append("    ").append(i + 1).append(". ").append(options.get(i)).append("\n");
                     }
@@ -115,11 +115,11 @@ public class AskUserQuestionTool implements Tool {
                 return "(User provided no response)";
             }
 
-            log.debug("用户回答: {}", userResponse);
+            log.debug("User response: {}", userResponse);
             return "User response: " + userResponse;
 
         } catch (Exception e) {
-            log.error("获取用户输入失败", e);
+            log.error("Failed to get user input", e);
             return "Error: Failed to get user input - " + e.getMessage();
         }
     }

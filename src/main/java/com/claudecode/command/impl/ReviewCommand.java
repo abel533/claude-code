@@ -43,7 +43,7 @@ public class ReviewCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.red("  ✗ AgentLoop 不可用，无法执行代码审查。");
+            return AnsiStyle.red("  ✗ AgentLoop unavailable, cannot perform code review.");
         }
 
         String trimmedArgs = args != null ? args.trim() : "";
@@ -55,16 +55,16 @@ public class ReviewCommand implements SlashCommand {
 
             // 检查 diff 是否为空
             if (diffOutput.isBlank()) {
-                return AnsiStyle.yellow("  ⚠ 没有检测到代码变更。") + "\n"
-                        + AnsiStyle.dim("  提示: 使用 --staged 审查已暂存的变更，或指定文件路径。");
+                return AnsiStyle.yellow("  ⚠ No code changes detected.") + "\n"
+                        + AnsiStyle.dim("  Tip: Use --staged to review staged changes, or specify a file path.");
             }
 
             // 构建审查提示
             String reviewPrompt = buildReviewPrompt(trimmedArgs, diffOutput);
 
             // 输出审查进行中的提示
-            context.out().println(AnsiStyle.cyan("  🔍 正在审查代码变更..."));
-            context.out().println(AnsiStyle.dim("  diff 大小: " + diffOutput.lines().count() + " 行"));
+            context.out().println(AnsiStyle.cyan("  🔍 Reviewing code changes..."));
+            context.out().println(AnsiStyle.dim("  diff size: " + diffOutput.lines().count() + " lines"));
             context.out().println();
 
             // 发送给 AI 进行审查
@@ -72,8 +72,8 @@ public class ReviewCommand implements SlashCommand {
             return result;
 
         } catch (Exception e) {
-            return AnsiStyle.red("  ✗ 代码审查失败: " + e.getMessage()) + "\n"
-                    + AnsiStyle.dim("  请确保当前目录是一个 Git 仓库。");
+            return AnsiStyle.red("  ✗ Code review failed: " + e.getMessage()) + "\n"
+                    + AnsiStyle.dim("  Please ensure the current directory is a Git repository.");
         }
     }
 
@@ -129,7 +129,7 @@ public class ReviewCommand implements SlashCommand {
 
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            throw new RuntimeException("git diff 执行失败 (exit=" + exitCode + "): " + errorOutput);
+            throw new RuntimeException("git diff failed (exit=" + exitCode + "): " + errorOutput);
         }
 
         return output;

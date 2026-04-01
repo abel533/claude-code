@@ -58,7 +58,7 @@ public class SkillLoader {
         Path commandsDir = projectDir.resolve(".claude").resolve("commands");
         loadFromDirectory(commandsDir, "command");
 
-        log.debug("共加载 {} 个技能", skills.size());
+        log.debug("Loaded {} skills in total", skills.size());
         return Collections.unmodifiableList(skills);
     }
 
@@ -77,13 +77,13 @@ public class SkillLoader {
                         try {
                             Skill skill = parseSkillFile(p, source);
                             skills.add(skill);
-                            log.debug("加载技能: {} [{}] from {}", skill.name(), source, p.getFileName());
+                            log.debug("Loaded skill: {} [{}] from {}", skill.name(), source, p.getFileName());
                         } catch (IOException e) {
-                            log.warn("加载技能文件失败: {}: {}", p, e.getMessage());
+                            log.warn("Failed to load skill file: {}: {}", p, e.getMessage());
                         }
                     });
         } catch (IOException e) {
-            log.debug("扫描技能目录失败: {}: {}", dir, e.getMessage());
+            log.debug("Failed to scan skill directory: {}: {}", dir, e.getMessage());
         }
     }
 

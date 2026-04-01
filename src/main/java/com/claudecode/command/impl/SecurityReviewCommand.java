@@ -45,7 +45,7 @@ public class SecurityReviewCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.red("  ✗ AgentLoop 不可用，无法执行安全审查。");
+            return AnsiStyle.red("  ✗ AgentLoop unavailable, cannot perform security review.");
         }
 
         try {
@@ -53,13 +53,13 @@ public class SecurityReviewCommand implements SlashCommand {
             String diffOutput = executeGitDiff();
 
             if (diffOutput.isBlank()) {
-                return AnsiStyle.yellow("  ⚠ 没有检测到代码变更。") + "\n"
-                        + AnsiStyle.dim("  git diff HEAD 未返回任何内容。请确认是否有提交记录。");
+                return AnsiStyle.yellow("  ⚠ No code changes detected.") + "\n"
+                        + AnsiStyle.dim("  git diff HEAD returned nothing. Please verify there are commits.");
             }
 
             // 输出审查进行中的提示
-            context.out().println(AnsiStyle.magenta("  🔒 正在进行安全审查..."));
-            context.out().println(AnsiStyle.dim("  diff 大小: " + diffOutput.lines().count() + " 行"));
+            context.out().println(AnsiStyle.magenta("  🔒 Performing security review..."));
+            context.out().println(AnsiStyle.dim("  diff size: " + diffOutput.lines().count() + " lines"));
             context.out().println();
 
             // 构建安全审查提示词
@@ -70,8 +70,8 @@ public class SecurityReviewCommand implements SlashCommand {
             return result;
 
         } catch (Exception e) {
-            return AnsiStyle.red("  ✗ 安全审查失败: " + e.getMessage()) + "\n"
-                    + AnsiStyle.dim("  请确保当前目录是一个 Git 仓库且有提交历史。");
+            return AnsiStyle.red("  ✗ Security review failed: " + e.getMessage()) + "\n"
+                    + AnsiStyle.dim("  Please ensure the current directory is a Git repository with commit history.");
         }
     }
 
@@ -102,7 +102,7 @@ public class SecurityReviewCommand implements SlashCommand {
 
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            throw new RuntimeException("git diff HEAD 执行失败 (exit=" + exitCode + "): " + errorOutput);
+            throw new RuntimeException("git diff HEAD failed (exit=" + exitCode + "): " + errorOutput);
         }
 
         return output;

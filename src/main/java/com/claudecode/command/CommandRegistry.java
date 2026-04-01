@@ -20,7 +20,7 @@ public class CommandRegistry {
         for (String alias : command.aliases()) {
             commands.put(alias.toLowerCase(), command);
         }
-        log.debug("注册命令: /{}", command.name());
+        log.debug("Registered command: /{}", command.name());
     }
 
     /** 批量注册 */

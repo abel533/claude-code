@@ -46,7 +46,7 @@ public class TaskGetTool implements Tool {
                   "properties": {
                     "task_id": {
                       "type": "string",
-                      "description": "要查询的任务 ID"
+                      "description": "Task ID to query"
                     }
                   },
                   "required": ["task_id"]
@@ -63,19 +63,19 @@ public class TaskGetTool implements Tool {
         // 获取 TaskManager 实例
         TaskManager manager = context.get(TASK_MANAGER_KEY);
         if (manager == null) {
-            return errorJson("TaskManager 未初始化，请检查上下文配置");
+            return errorJson("TaskManager not initialized, check context configuration");
         }
 
         // 解析必填参数: task_id
         String taskId = (String) input.get("task_id");
         if (taskId == null || taskId.isBlank()) {
-            return errorJson("参数 'task_id' 是必填项且不能为空");
+            return errorJson("Parameter 'task_id' is required and cannot be empty");
         }
 
         // 查询任务
         Optional<TaskInfo> taskOpt = manager.getTask(taskId);
         if (taskOpt.isEmpty()) {
-            return errorJson("未找到 ID 为 '" + taskId + "' 的任务");
+            return errorJson("Task with ID '" + taskId + "' not found");
         }
 
         // 返回任务详情 JSON

@@ -77,7 +77,7 @@ public class AgentTool implements Tool {
                 context.getOrDefault(AGENT_FACTORY_KEY, null);
 
         if (agentFactory == null) {
-            log.warn("AgentTool: 未配置 Agent 工厂，无法创建子 Agent");
+            log.warn("AgentTool: Agent factory not configured, cannot create sub-agent");
             return "Error: Sub-agent capability is not configured. "
                    + "The Agent tool requires an agent factory to be registered in the ToolContext.";
         }
@@ -85,14 +85,14 @@ public class AgentTool implements Tool {
         // 构建完整的子 Agent 提示
         String fullPrompt = buildSubAgentPrompt(prompt, additionalContext);
 
-        log.info("启动子 Agent，任务: {}", truncate(prompt, 80));
+        log.info("Starting sub-agent, task: {}", truncate(prompt, 80));
 
         try {
             String result = agentFactory.apply(fullPrompt);
-            log.info("子 Agent 完成，结果长度: {} chars", result.length());
+            log.info("Sub-agent completed, result length: {} chars", result.length());
             return result;
         } catch (Exception e) {
-            log.error("子 Agent 执行失败", e);
+            log.error("Sub-agent execution failed", e);
             return "Error: Sub-agent failed: " + e.getMessage();
         }
     }

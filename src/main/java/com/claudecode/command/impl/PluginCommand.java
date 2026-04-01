@@ -47,7 +47,7 @@ public class PluginCommand implements SlashCommand {
     public String execute(String args, CommandContext context) {
         PluginManager manager = getPluginManager(context);
         if (manager == null) {
-            return AnsiStyle.red("  ✗ 插件系统未初始化");
+            return AnsiStyle.red("  ✗ Plugin system not initialized");
         }
 
         String trimmed = (args == null) ? "" : args.trim();
@@ -67,7 +67,7 @@ public class PluginCommand implements SlashCommand {
             case "unload" -> unloadPlugin(manager, subArgs);
             case "reload" -> reloadPlugins(manager);
             case "info" -> pluginInfo(manager, subArgs);
-            default -> AnsiStyle.yellow("  未知子命令: " + subCommand) + "\n"
+            default -> AnsiStyle.yellow("  Unknown subcommand: " + subCommand) + "\n"
                     + usageHelp();
         };
     }
@@ -96,12 +96,12 @@ public class PluginCommand implements SlashCommand {
                 sb.append(String.format("    ID: %s | %s%n",
                         AnsiStyle.cyan(p.id()),
                         p.description()));
-                sb.append(String.format("    工具: %d | 命令: %d%n",
+                sb.append(String.format("    Tools: %d | Commands: %d%n",
                         p.getTools().size(),
                         p.getCommands().size()));
                 sb.append("\n");
             }
-            sb.append(AnsiStyle.dim(String.format("  共 %d 个插件", plugins.size()))).append("\n");
+            sb.append(AnsiStyle.dim(String.format("  Total %d plugins", plugins.size()))).append("\n");
         }
         return sb.toString();
     }
@@ -111,15 +111,15 @@ public class PluginCommand implements SlashCommand {
      */
     private String loadPlugin(PluginManager manager, String pathStr) {
         if (pathStr.isEmpty()) {
-            return AnsiStyle.yellow("  用法: /plugin load <jar-path>");
+            return AnsiStyle.yellow("  Usage: /plugin load <jar-path>");
         }
         Path jarPath = Path.of(pathStr);
         boolean success = manager.loadPlugin(jarPath);
         if (success) {
-            return AnsiStyle.green("  ✓ 插件加载成功: " + jarPath.getFileName());
+            return AnsiStyle.green("  ✓ Plugin loaded: " + jarPath.getFileName());
         } else {
-            return AnsiStyle.red("  ✗ 插件加载失败: " + jarPath.getFileName())
-                    + "\n" + AnsiStyle.dim("  请检查 JAR 是否包含有效的 Plugin-Class 属性");
+            return AnsiStyle.red("  ✗ Plugin load failed: " + jarPath.getFileName())
+                    + "\n" + AnsiStyle.dim("  Please check if JAR contains a valid Plugin-Class attribute");
         }
     }
 
@@ -128,13 +128,13 @@ public class PluginCommand implements SlashCommand {
      */
     private String unloadPlugin(PluginManager manager, String pluginId) {
         if (pluginId.isEmpty()) {
-            return AnsiStyle.yellow("  用法: /plugin unload <plugin-id>");
+            return AnsiStyle.yellow("  Usage: /plugin unload <plugin-id>");
         }
         boolean success = manager.unload(pluginId);
         if (success) {
-            return AnsiStyle.green("  ✓ 插件已卸载: " + pluginId);
+            return AnsiStyle.green("  ✓ Plugin unloaded: " + pluginId);
         } else {
-            return AnsiStyle.red("  ✗ 未找到插件: " + pluginId);
+            return AnsiStyle.red("  ✗ Plugin not found: " + pluginId);
         }
     }
 
@@ -147,7 +147,7 @@ public class PluginCommand implements SlashCommand {
         manager.loadAll();
         int afterCount = manager.getPlugins().size();
         return AnsiStyle.green(
-                String.format("  ✓ 插件已重载（之前: %d，现在: %d）", beforeCount, afterCount));
+                String.format("  ✓ Plugins reloaded (before: %d, now: %d)", beforeCount, afterCount));
     }
 
     /**
@@ -155,12 +155,12 @@ public class PluginCommand implements SlashCommand {
      */
     private String pluginInfo(PluginManager manager, String pluginId) {
         if (pluginId.isEmpty()) {
-            return AnsiStyle.yellow("  用法: /plugin info <plugin-id>");
+            return AnsiStyle.yellow("  Usage: /plugin info <plugin-id>");
         }
 
         PluginInfo info = manager.findPlugin(pluginId);
         if (info == null) {
-            return AnsiStyle.red("  ✗ 未找到插件: " + pluginId);
+            return AnsiStyle.red("  ✗ Plugin not found: " + pluginId);
         }
 
         Plugin p = info.plugin();
@@ -245,11 +245,11 @@ public class PluginCommand implements SlashCommand {
      */
     private String usageHelp() {
         return AnsiStyle.dim("""
-                  用法:
-                    /plugin              列出所有插件
-                    /plugin load <path>  加载 JAR 插件
-                    /plugin unload <id>  卸载插件
-                    /plugin reload       重载所有插件
-                    /plugin info <id>    查看插件详情""");
+                  Usage:
+                    /plugin              List all plugins
+                    /plugin load <path>  Load JAR plugin
+                    /plugin unload <id>  Unload plugin
+                    /plugin reload       Reload all plugins
+                    /plugin info <id>    View plugin details""");
     }
 }

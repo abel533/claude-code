@@ -61,8 +61,8 @@ public class McpClient implements AutoCloseable {
      * @param transport  传输层实现
      */
     public McpClient(String serverName, McpTransport transport) {
-        this.serverName = Objects.requireNonNull(serverName, "服务器名称不能为空");
-        this.transport = Objects.requireNonNull(transport, "传输层不能为空");
+        this.serverName = Objects.requireNonNull(serverName, "Server name cannot be null");
+        this.transport = Objects.requireNonNull(transport, "Transport cannot be null");
     }
 
     /**
@@ -79,7 +79,7 @@ public class McpClient implements AutoCloseable {
      * @throws McpException 初始化失败
      */
     public void initialize() throws McpException {
-        log.info("正在初始化 MCP 服务器 '{}'...", serverName);
+        log.info("Initializing MCP server '{}'...", serverName);
 
         // 1. 发送 initialize 请求
         int initId = nextId();
@@ -101,7 +101,7 @@ public class McpClient implements AutoCloseable {
         try {
             response = transport.sendRequest(MAPPER.writeValueAsString(initRequest));
         } catch (Exception e) {
-            throw new McpException("MCP initialize 请求失败: " + e.getMessage(), e);
+            throw new McpException("MCP initialize request failed: " + e.getMessage(), e);
         }
 
         // 2. 解析服务器能力
@@ -111,9 +111,9 @@ public class McpClient implements AutoCloseable {
             serverInfo = result.get("serverInfo");
             String serverVersion = result.has("protocolVersion")
                     ? result.get("protocolVersion").asText() : "unknown";
-            log.info("MCP 服务器 '{}' 协议版本: {}", serverName, serverVersion);
+            log.info("MCP server '{}' protocol version: {}", serverName, serverVersion);
             if (serverInfo != null) {
-                log.info("MCP 服务器信息: {}", serverInfo);
+                log.info("MCP server info: {}", serverInfo);
             }
         }
 
@@ -125,7 +125,7 @@ public class McpClient implements AutoCloseable {
         try {
             transport.sendNotification(MAPPER.writeValueAsString(initializedNotif));
         } catch (Exception e) {
-            throw new McpException("发送 initialized 通知失败: " + e.getMessage(), e);
+            throw new McpException("Failed to send initialized notification: " + e.getMessage(), e);
         }
 
         // 4. 发现工具
@@ -135,7 +135,7 @@ public class McpClient implements AutoCloseable {
         discoverResources();
 
         initialized = true;
-        log.info("MCP 服务器 '{}' 初始化完成: {} 个工具, {} 个资源",
+        log.info("MCP server '{}' initialization complete: {} tools, {} resources",
                 serverName, tools.size(), resources.size());
     }
 
@@ -149,7 +149,7 @@ public class McpClient implements AutoCloseable {
                 && serverCapabilities.get("tools").isObject()) {
             // 服务器声明支持工具
         } else if (serverCapabilities != null && !serverCapabilities.has("tools")) {
-            log.debug("MCP 服务器 '{}' 未声明 tools 能力，尝试发现工具", serverName);
+            log.debug("MCP server '{}' did not declare tools capability, attempting discovery", serverName);
         }
 
         int id = nextId();
@@ -173,19 +173,19 @@ public class McpClient implements AutoCloseable {
                         JsonNode inputSchema = toolNode.get("inputSchema");
 
                         tools.put(name, new McpTool(name, description, inputSchema));
-                        log.debug("发现 MCP 工具: {} - {}", name, description);
+                        log.debug("Discovered MCP tool: {} - {}", name, description);
                     }
                 }
             }
         } catch (McpException e) {
             // tools/list 可能不被支持，记录警告但不中断初始化
             if (e.isJsonRpcError() && e.getErrorCode() == -32601) {
-                log.debug("MCP 服务器 '{}' 不支持 tools/list", serverName);
+                log.debug("MCP server '{}' does not support tools/list", serverName);
             } else {
-                log.warn("发现 MCP 工具失败: {}", e.getMessage());
+                log.warn("Failed to discover MCP tools: {}", e.getMessage());
             }
         } catch (Exception e) {
-            log.warn("发现 MCP 工具时序列化异常: {}", e.getMessage());
+            log.warn("MCP tool discovery serialization exception: {}", e.getMessage());
         }
     }
 
@@ -199,7 +199,7 @@ public class McpClient implements AutoCloseable {
                 && serverCapabilities.get("resources").isObject()) {
             // 服务器声明支持资源
         } else if (serverCapabilities != null && !serverCapabilities.has("resources")) {
-            log.debug("MCP 服务器 '{}' 未声明 resources 能力，跳过资源发现", serverName);
+            log.debug("MCP server '{}' did not declare resources capability, skipping discovery", serverName);
             return;
         }
 
@@ -226,18 +226,18 @@ public class McpClient implements AutoCloseable {
                                 ? resNode.get("mimeType").asText() : "text/plain";
 
                         resources.put(uri, new McpResource(uri, name, description, mimeType));
-                        log.debug("发现 MCP 资源: {} ({})", name, uri);
+                        log.debug("Discovered MCP resource: {} ({})", name, uri);
                     }
                 }
             }
         } catch (McpException e) {
             if (e.isJsonRpcError() && e.getErrorCode() == -32601) {
-                log.debug("MCP 服务器 '{}' 不支持 resources/list", serverName);
+                log.debug("MCP server '{}' does not support resources/list", serverName);
             } else {
-                log.warn("发现 MCP 资源失败: {}", e.getMessage());
+                log.warn("Failed to discover MCP resources: {}", e.getMessage());
             }
         } catch (Exception e) {
-            log.warn("发现 MCP 资源时序列化异常: {}", e.getMessage());
+            log.warn("MCP resource discovery serialization exception: {}", e.getMessage());
         }
     }
 
@@ -251,10 +251,10 @@ public class McpClient implements AutoCloseable {
      */
     public String callTool(String toolName, Map<String, Object> arguments) throws McpException {
         if (!initialized) {
-            throw new McpException("MCP 客户端尚未初始化");
+            throw new McpException("MCP client not yet initialized");
         }
         if (!tools.containsKey(toolName)) {
-            throw new McpException("MCP 工具不存在: " + toolName);
+            throw new McpException("MCP tool does not exist: " + toolName);
         }
 
         int id = nextId();
@@ -269,7 +269,7 @@ public class McpClient implements AutoCloseable {
         );
 
         try {
-            log.debug("调用 MCP 工具: {} (参数: {})", toolName, arguments);
+            log.debug("Calling MCP tool: {} (args: {})", toolName, arguments);
             JsonNode response = transport.sendRequest(MAPPER.writeValueAsString(request));
             JsonNode result = response.get("result");
 
@@ -292,7 +292,7 @@ public class McpClient implements AutoCloseable {
 
                 // 检查 isError 标志
                 if (result.has("isError") && result.get("isError").asBoolean()) {
-                    throw new McpException("MCP 工具 '" + toolName + "' 执行出错: " + sb);
+                    throw new McpException("MCP tool '" + toolName + "' execution error: " + sb);
                 }
 
                 return sb.toString();
@@ -304,7 +304,7 @@ public class McpClient implements AutoCloseable {
         } catch (McpException e) {
             throw e;
         } catch (Exception e) {
-            throw new McpException("调用 MCP 工具 '" + toolName + "' 失败: " + e.getMessage(), e);
+            throw new McpException("Failed to call MCP tool '" + toolName + "': " + e.getMessage(), e);
         }
     }
 
@@ -317,7 +317,7 @@ public class McpClient implements AutoCloseable {
      */
     public String readResource(String uri) throws McpException {
         if (!initialized) {
-            throw new McpException("MCP 客户端尚未初始化");
+            throw new McpException("MCP client not yet initialized");
         }
 
         int id = nextId();
@@ -329,7 +329,7 @@ public class McpClient implements AutoCloseable {
         );
 
         try {
-            log.debug("读取 MCP 资源: {}", uri);
+            log.debug("Reading MCP resource: {}", uri);
             JsonNode response = transport.sendRequest(MAPPER.writeValueAsString(request));
             JsonNode result = response.get("result");
 
@@ -356,7 +356,7 @@ public class McpClient implements AutoCloseable {
         } catch (McpException e) {
             throw e;
         } catch (Exception e) {
-            throw new McpException("读取 MCP 资源 '" + uri + "' 失败: " + e.getMessage(), e);
+            throw new McpException("Failed to read MCP resource '" + uri + "': " + e.getMessage(), e);
         }
     }
 
@@ -415,7 +415,7 @@ public class McpClient implements AutoCloseable {
         tools.clear();
         resources.clear();
         transport.close();
-        log.info("MCP 客户端 '{}' 已关闭", serverName);
+        log.info("MCP client '{}' closed", serverName);
     }
 
     /** 生成下一个 JSON-RPC 请求 ID */

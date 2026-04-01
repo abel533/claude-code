@@ -38,21 +38,21 @@ public class RewindCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         if (context.agentLoop() == null) {
-            return AnsiStyle.red("  ✗ AgentLoop 不可用。");
+            return AnsiStyle.red("  ✗ AgentLoop unavailable.");
         }
 
         // 解析要回滚的消息对数量
         int pairsToRemove = parseRewindCount(args);
         if (pairsToRemove < 0) {
-            return AnsiStyle.red("  ✗ 无效的回滚数量。请输入一个正整数。") + "\n"
-                    + AnsiStyle.dim("  用法: /rewind [n]  （n 为要移除的消息对数，默认为 1）");
+            return AnsiStyle.red("  ✗ Invalid rewind count. Please enter a positive integer.") + "\n"
+                    + AnsiStyle.dim("  Usage: /rewind [n]  (n = number of message pairs to remove, default 1)");
         }
 
         List<Message> currentHistory = context.agentLoop().getMessageHistory();
         int currentSize = currentHistory.size();
 
         if (currentSize == 0) {
-            return AnsiStyle.yellow("  ⚠ 对话历史为空，无法回滚。");
+            return AnsiStyle.yellow("  ⚠ Conversation history is empty, cannot rewind.");
         }
 
         // 计算需要移除的消息数量
@@ -61,8 +61,8 @@ public class RewindCommand implements SlashCommand {
         // 如果要移除的消息数超过总消息数，则清除所有消息
         if (messagesToRemove >= currentSize) {
             context.agentLoop().replaceHistory(new ArrayList<>());
-            return AnsiStyle.green("  ✓ 已清除全部 " + currentSize + " 条消息。") + "\n"
-                    + AnsiStyle.dim("  （请求移除 " + pairsToRemove + " 对，实际清除全部消息）");
+            return AnsiStyle.green("  ✓ Cleared all " + currentSize + " messages.") + "\n"
+                    + AnsiStyle.dim("  (Requested " + pairsToRemove + " pairs, cleared all messages)");
         }
 
         // 截断消息历史
@@ -72,9 +72,9 @@ public class RewindCommand implements SlashCommand {
 
         // 构建结果输出
         StringBuilder sb = new StringBuilder();
-        sb.append(AnsiStyle.green("  ✓ 已回滚 " + pairsToRemove + " 个消息对")).append("\n");
-        sb.append(AnsiStyle.dim("    移除: " + messagesToRemove + " 条消息")).append("\n");
-        sb.append(AnsiStyle.dim("    剩余: " + newSize + " 条消息")).append("\n");
+        sb.append(AnsiStyle.green("  ✓ Rewound " + pairsToRemove + " message pairs")).append("\n");
+        sb.append(AnsiStyle.dim("    Removed: " + messagesToRemove + " messages")).append("\n");
+        sb.append(AnsiStyle.dim("    Remaining: " + newSize + " messages")).append("\n");
 
         return sb.toString();
     }

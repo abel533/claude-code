@@ -69,17 +69,17 @@ public class McpManager implements AutoCloseable {
         // 项目级配置
         Path projectConfig = Path.of(System.getProperty("user.dir"), PROJECT_CONFIG);
         if (Files.exists(projectConfig)) {
-            loadConfigFile(projectConfig, "项目级");
+            loadConfigFile(projectConfig, "project");
         }
 
         // 全局配置
         Path globalConfig = Path.of(System.getProperty("user.home"), GLOBAL_CONFIG);
         if (Files.exists(globalConfig)) {
-            loadConfigFile(globalConfig, "全局");
+            loadConfigFile(globalConfig, "global");
         }
 
         if (clients.isEmpty()) {
-            log.debug("未找到 MCP 配置文件或无服务器定义");
+            log.debug("No MCP config file found or no server definitions");
         }
     }
 
@@ -87,7 +87,7 @@ public class McpManager implements AutoCloseable {
      * 加载单个配置文件中的 MCP 服务器定义。
      */
     private void loadConfigFile(Path configPath, String label) {
-        log.info("加载 {} MCP 配置: {}", label, configPath);
+        log.info("Loading {} MCP config: {}", label, configPath);
 
         try {
             String content = Files.readString(configPath);
@@ -95,7 +95,7 @@ public class McpManager implements AutoCloseable {
 
             JsonNode serversNode = root.get("servers");
             if (serversNode == null || !serversNode.isObject()) {
-                log.warn("{} 配置文件缺少 'servers' 字段: {}", label, configPath);
+                log.warn("{} config file missing 'servers' field: {}", label, configPath);
                 return;
             }
 
@@ -107,7 +107,7 @@ public class McpManager implements AutoCloseable {
 
                 // 跳过已存在的服务器（项目级优先于全局）
                 if (clients.containsKey(name)) {
-                    log.debug("MCP 服务器 '{}' 已连接，跳过 {} 配置中的重复定义", name, label);
+                    log.debug("MCP server '{}' already connected, skipping duplicate definition in {} config", name, label);
                     continue;
                 }
 
@@ -132,11 +132,11 @@ public class McpManager implements AutoCloseable {
 
                     connect(name, command, args, env);
                 } catch (Exception e) {
-                    log.error("从配置连接 MCP 服务器 '{}' 失败: {}", name, e.getMessage());
+                    log.error("Failed to connect MCP server '{}' from config: {}", name, e.getMessage());
                 }
             }
         } catch (IOException e) {
-            log.error("读取 MCP 配置文件失败: {}", configPath, e);
+            log.error("Failed to read MCP config file: {}", configPath, e);
         }
     }
 
@@ -154,15 +154,15 @@ public class McpManager implements AutoCloseable {
             throws McpException {
         // 如果已存在，先断开
         if (clients.containsKey(name)) {
-            log.info("MCP 服务器 '{}' 已存在，先断开旧连接", name);
+            log.info("MCP server '{}' already exists, disconnecting old connection", name);
             try {
                 disconnect(name);
             } catch (Exception e) {
-                log.warn("断开旧 MCP 连接 '{}' 时异常: {}", name, e.getMessage());
+                log.warn("Exception disconnecting old MCP connection '{}': {}", name, e.getMessage());
             }
         }
 
-        log.info("连接 MCP 服务器 '{}': {} {}", name, command, String.join(" ", args));
+        log.info("Connecting MCP server '{}': {} {}", name, command, String.join(" ", args));
 
         // 创建传输层并启动（确保初始化失败时清理资源）
         StdioTransport transport = new StdioTransport(command, args, env);
@@ -179,7 +179,7 @@ public class McpManager implements AutoCloseable {
                 e.addSuppressed(suppressed);
             }
             throw (e instanceof McpException mcp) ? mcp
-                    : new McpException("连接 MCP 服务器 '" + name + "' 失败: " + e.getMessage(), e);
+                    : new McpException("Failed to connect MCP server '" + name + "': " + e.getMessage(), e);
         }
 
         // 注册客户端
@@ -189,13 +189,13 @@ public class McpManager implements AutoCloseable {
         for (McpClient.McpTool tool : client.getTools()) {
             String existingServer = toolToServer.get(tool.name());
             if (existingServer != null) {
-                log.warn("MCP 工具名称冲突: '{}' 同时存在于服务器 '{}' 和 '{}'，使用后者",
+                log.warn("MCP tool name conflict: '{}' exists in both server '{}' and '{}', using latter",
                         tool.name(), existingServer, name);
             }
             toolToServer.put(tool.name(), name);
         }
 
-        log.info("MCP 服务器 '{}' 连接成功", name);
+        log.info("MCP server '{}' connected successfully", name);
         return client;
     }
 
@@ -208,7 +208,7 @@ public class McpManager implements AutoCloseable {
     public void disconnect(String name) throws McpException {
         McpClient client = clients.remove(name);
         if (client == null) {
-            throw new McpException("MCP 服务器 '" + name + "' 不存在");
+            throw new McpException("MCP server '" + name + "' does not exist");
         }
 
         // 清理工具映射
@@ -216,9 +216,9 @@ public class McpManager implements AutoCloseable {
 
         try {
             client.close();
-            log.info("MCP 服务器 '{}' 已断开", name);
+            log.info("MCP server '{}' disconnected", name);
         } catch (Exception e) {
-            throw new McpException("断开 MCP 服务器 '" + name + "' 时异常: " + e.getMessage(), e);
+            throw new McpException("Exception disconnecting MCP server '" + name + "': " + e.getMessage(), e);
         }
     }
 
@@ -302,7 +302,7 @@ public class McpManager implements AutoCloseable {
     public String callTool(String toolName, Map<String, Object> args) throws McpException {
         String serverName = toolToServer.get(toolName);
         if (serverName == null) {
-            throw new McpException("未找到 MCP 工具: " + toolName);
+            throw new McpException("MCP tool not found: " + toolName);
         }
         return callTool(serverName, toolName, args);
     }
@@ -320,10 +320,10 @@ public class McpManager implements AutoCloseable {
             throws McpException {
         McpClient client = clients.get(serverName);
         if (client == null) {
-            throw new McpException("MCP 服务器 '" + serverName + "' 不存在");
+            throw new McpException("MCP server '" + serverName + "' does not exist");
         }
         if (!client.isInitialized()) {
-            throw new McpException("MCP 服务器 '" + serverName + "' 尚未初始化");
+            throw new McpException("MCP server '" + serverName + "' not yet initialized");
         }
         return client.callTool(toolName, args);
     }
@@ -344,7 +344,7 @@ public class McpManager implements AutoCloseable {
      * 先断开所有已有连接，再重新加载配置。
      */
     public void reload() {
-        log.info("重新加载 MCP 配置...");
+        log.info("Reloading MCP config...");
 
         // 断开所有现有连接
         List<String> serverNames = new ArrayList<>(clients.keySet());
@@ -352,13 +352,13 @@ public class McpManager implements AutoCloseable {
             try {
                 disconnect(name);
             } catch (Exception e) {
-                log.warn("重载时断开 MCP 服务器 '{}' 失败: {}", name, e.getMessage());
+                log.warn("Failed to disconnect MCP server '{}' during reload: {}", name, e.getMessage());
             }
         }
 
         // 重新加载
         loadFromConfig();
-        log.info("MCP 配置重载完成: {} 个服务器已连接", clients.size());
+        log.info("MCP config reload complete: {} servers connected", clients.size());
     }
 
     /**
@@ -368,7 +368,7 @@ public class McpManager implements AutoCloseable {
      */
     public String getSummary() {
         if (clients.isEmpty()) {
-            return "  无已连接的 MCP 服务器";
+            return "  No connected MCP servers";
         }
 
         StringBuilder sb = new StringBuilder();
@@ -378,14 +378,14 @@ public class McpManager implements AutoCloseable {
 
             String status;
             if (client.isConnected() && client.isInitialized()) {
-                status = "✅ 已连接";
+                status = "✅ Connected";
             } else if (client.isConnected()) {
-                status = "🔄 连接中";
+                status = "🔄 Connecting";
             } else {
-                status = "❌ 已断开";
+                status = "❌ Disconnected";
             }
 
-            sb.append(String.format("  %-20s %s (%d 工具, %d 资源)%n",
+            sb.append(String.format("  %-20s %s (%d tools, %d resources)%n",
                     name, status, client.getTools().size(), client.getResources().size()));
         }
         return sb.toString().stripTrailing();
@@ -393,7 +393,7 @@ public class McpManager implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        log.info("关闭所有 MCP 连接...");
+        log.info("Closing all MCP connections...");
         List<Exception> errors = new ArrayList<>();
 
         for (Map.Entry<String, McpClient> entry : clients.entrySet()) {
@@ -401,18 +401,18 @@ public class McpManager implements AutoCloseable {
                 entry.getValue().close();
             } catch (Exception e) {
                 errors.add(e);
-                log.error("关闭 MCP 服务器 '{}' 时异常: {}", entry.getKey(), e.getMessage());
+                log.error("Exception closing MCP server '{}': {}", entry.getKey(), e.getMessage());
             }
         }
         clients.clear();
         toolToServer.clear();
 
         if (!errors.isEmpty()) {
-            McpException ex = new McpException("关闭 MCP 管理器时有 " + errors.size() + " 个错误");
+            McpException ex = new McpException("Errors closing MCP manager: " + errors.size() + " errors");
             errors.forEach(ex::addSuppressed);
             throw ex;
         }
 
-        log.info("所有 MCP 连接已关闭");
+        log.info("All MCP connections closed");
     }
 }

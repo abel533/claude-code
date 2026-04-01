@@ -62,7 +62,7 @@ public class ClaudeMdLoader {
                         .sorted()
                         .forEach(p -> loadFile(p, "rule").ifPresent(sections::add));
             } catch (IOException e) {
-                log.debug("加载规则目录失败: {}", e.getMessage());
+                log.debug("Failed to load rules directory: {}", e.getMessage());
             }
         }
 
@@ -80,11 +80,11 @@ public class ClaudeMdLoader {
         try {
             String content = Files.readString(path, StandardCharsets.UTF_8).strip();
             if (!content.isEmpty()) {
-                log.debug("已加载 {} 级 CLAUDE.md: {}", level, path);
+                log.debug("Loaded {} level CLAUDE.md: {}", level, path);
                 return java.util.Optional.of(content);
             }
         } catch (IOException e) {
-            log.warn("读取 {} 失败: {}", path, e.getMessage());
+            log.warn("Failed to read {}: {}", path, e.getMessage());
         }
         return java.util.Optional.empty();
     }

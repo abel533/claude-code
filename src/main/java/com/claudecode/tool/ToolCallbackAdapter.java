@@ -51,17 +51,17 @@ public class ToolCallbackAdapter implements ToolCallback {
             // 权限前置检查
             PermissionResult perm = tool.checkPermission(input, context);
             if (!perm.allowed()) {
-                log.warn("[{}] 权限拒绝: {}", tool.name(), perm.message());
+                log.warn("[{}] Permission denied: {}", tool.name(), perm.message());
                 return "Permission denied: " + perm.message();
             }
 
             log.debug("[{}] {}", tool.name(), tool.activityDescription(input));
             return tool.execute(input, context);
         } catch (JsonProcessingException e) {
-            log.warn("[{}] JSON 解析失败: {}", tool.name(), e.getMessage());
+            log.warn("[{}] JSON parse failed: {}", tool.name(), e.getMessage());
             return "Error: Invalid JSON input: " + e.getMessage();
         } catch (Exception e) {
-            log.warn("[{}] 执行异常: {}", tool.name(), e.getMessage());
+            log.warn("[{}] Execution exception: {}", tool.name(), e.getMessage());
             return "Error: " + e.getMessage();
         }
     }

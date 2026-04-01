@@ -42,7 +42,7 @@ public class ExportCommand implements SlashCommand {
 
         // 至少需要系统提示 + 用户消息 + 助手回复
         if (history.size() < 3) {
-            return AnsiStyle.yellow("  ⚠ 暂无足够的对话内容可导出");
+            return AnsiStyle.yellow("  ⚠ Not enough conversation content to export");
         }
 
         // 确定输出路径
@@ -67,10 +67,10 @@ public class ExportCommand implements SlashCommand {
 
             int msgCount = history.size();
             int lineCount = (int) markdown.lines().count();
-            return AnsiStyle.green("  ✓ 对话已导出: " + outputPath)
+            return AnsiStyle.green("  ✓ Conversation exported: " + outputPath)
                     + AnsiStyle.dim(" (" + msgCount + " messages, " + lineCount + " lines)");
         } catch (IOException e) {
-            return AnsiStyle.red("  ✗ 导出失败: " + e.getMessage());
+            return AnsiStyle.red("  ✗ Export failed: " + e.getMessage());
         }
     }
 

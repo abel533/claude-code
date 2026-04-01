@@ -43,7 +43,7 @@ public class ConversationPersistence {
         try {
             Files.createDirectories(conversationsDir);
         } catch (IOException e) {
-            log.warn("无法创建对话存储目录: {}", e.getMessage());
+            log.warn("Failed to create conversation storage directory: {}", e.getMessage());
         }
     }
 
@@ -76,10 +76,10 @@ public class ConversationPersistence {
             );
 
             MAPPER.writeValue(file.toFile(), conv);
-            log.info("对话已保存: {}", file.getFileName());
+            log.info("Conversation saved: {}", file.getFileName());
             return file;
         } catch (IOException e) {
-            log.error("保存对话失败: {}", e.getMessage());
+            log.error("Failed to save conversation: {}", e.getMessage());
             return null;
         }
     }
@@ -106,7 +106,7 @@ public class ConversationPersistence {
                     .filter(Objects::nonNull)
                     .toList();
         } catch (IOException e) {
-            log.error("加载对话失败: {}", e.getMessage());
+            log.error("Failed to load conversation: {}", e.getMessage());
             return List.of();
         }
     }
@@ -131,11 +131,11 @@ public class ConversationPersistence {
                                     conv.messages().size()
                             ));
                         } catch (IOException e) {
-                            log.debug("跳过无效对话文件: {}", file.getFileName());
+                            log.debug("Skipping invalid conversation file: {}", file.getFileName());
                         }
                     });
         } catch (IOException e) {
-            log.warn("列出对话失败: {}", e.getMessage());
+            log.warn("Failed to list conversations: {}", e.getMessage());
         }
 
         return summaries;

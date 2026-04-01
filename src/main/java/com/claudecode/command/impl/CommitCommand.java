@@ -36,7 +36,7 @@ public class CommitCommand implements SlashCommand {
     public String execute(String args, CommandContext context) {
         Path projectDir = Path.of(System.getProperty("user.dir"));
         if (!Files.isDirectory(projectDir.resolve(".git"))) {
-            return AnsiStyle.yellow("  ⚠ 当前目录不是 Git 仓库");
+            return AnsiStyle.yellow("  ⚠ Current directory is not a Git repository");
         }
 
         args = args == null ? "" : args.strip();
@@ -49,7 +49,7 @@ public class CommitCommand implements SlashCommand {
             if (addAll) {
                 String addResult = runGit(projectDir, "add", "-A");
                 if (addResult == null) {
-                    return AnsiStyle.red("  ✗ git add 失败");
+                    return AnsiStyle.red("  ✗ git add failed");
                 }
             }
 
@@ -58,29 +58,29 @@ public class CommitCommand implements SlashCommand {
             if (staged == null || staged.isBlank()) {
                 String status = runGit(projectDir, "status", "--short");
                 if (status != null && !status.isBlank()) {
-                    return AnsiStyle.yellow("  ⚠ 没有已暂存的变更\n")
-                            + AnsiStyle.dim("  使用 /commit --all 自动添加所有文件\n")
-                            + AnsiStyle.dim("  或先手动执行 git add");
+                    return AnsiStyle.yellow("  ⚠ No staged changes\n")
+                            + AnsiStyle.dim("  Use /commit --all to add all files\n")
+                            + AnsiStyle.dim("  Or run git add manually first");
                 }
-                return AnsiStyle.green("  ✓ 工作区干净，无需提交");
+                return AnsiStyle.green("  ✓ Working directory clean, nothing to commit");
             }
 
             // 如果没有指定 message，使用 AI 生成
             if (message.isEmpty()) {
                 message = generateCommitMessage(projectDir, context);
                 if (message == null || message.isBlank()) {
-                    return AnsiStyle.red("  ✗ 无法生成 commit message");
+                    return AnsiStyle.red("  ✗ Failed to generate commit message");
                 }
             }
 
             // 执行 git commit
             String commitResult = runGit(projectDir, "commit", "-m", message);
             if (commitResult == null) {
-                return AnsiStyle.red("  ✗ git commit 失败");
+                return AnsiStyle.red("  ✗ git commit failed");
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("\n").append(AnsiStyle.green("  ✓ Commit 成功\n"));
+            sb.append("\n").append(AnsiStyle.green("  ✓ Commit successful\n"));
             sb.append("  ").append("─".repeat(50)).append("\n");
             sb.append("  ").append(AnsiStyle.bold("Message: ")).append(message).append("\n");
 
@@ -90,7 +90,7 @@ public class CommitCommand implements SlashCommand {
             return sb.toString();
 
         } catch (Exception e) {
-            return AnsiStyle.red("  ✗ 提交失败: " + e.getMessage());
+            return AnsiStyle.red("  ✗ Commit failed: " + e.getMessage());
         }
     }
 
@@ -108,12 +108,12 @@ public class CommitCommand implements SlashCommand {
 
             // 使用 ChatModel 生成 commit message
             String prompt = """
-                    分析以下 git diff，生成一个简洁的 commit message。
-                    要求：
-                    1. 使用 conventional commits 格式（feat/fix/docs/refactor/chore等前缀）
-                    2. 第一行不超过 72 个字符
-                    3. 如果有多个变更，可以在第一行后空一行添加详细说明
-                    4. 只返回 commit message 文本，不要添加其他说明
+                    Analyze the following git diff and generate a concise commit message.
+                    Requirements:
+                    1. Use conventional commits format (feat/fix/docs/refactor/chore prefix)
+                    2. First line should not exceed 72 characters
+                    3. For multiple changes, add details after a blank line
+                    4. Return only the commit message text, no additional explanation
                     
                     Git diff:
                     ```

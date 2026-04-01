@@ -146,7 +146,7 @@ public class AgentLoop {
 
         while (iteration < MAX_ITERATIONS) {
             iteration++;
-            log.debug("Agent 循环 第{}轮 ({})", iteration, streaming ? "流式" : "阻塞");
+            log.debug("Agent loop iteration {} ({})", iteration, streaming ? "streaming" : "blocking");
 
             Prompt prompt = new Prompt(List.copyOf(messageHistory), options);
 
@@ -177,7 +177,7 @@ public class AgentLoop {
 
             // 无工具调用 → 结束
             if (!result.assistant.hasToolCalls()) {
-                log.debug("无工具调用，循环结束（共{}轮）", iteration);
+                log.debug("No tool calls, loop ended (total {} iterations)", iteration);
                 break;
             }
 
@@ -186,8 +186,8 @@ public class AgentLoop {
         }
 
         if (iteration >= MAX_ITERATIONS) {
-            log.warn("Agent 循环已达最大迭代次数 {}，强制终止", MAX_ITERATIONS);
-            lastAssistantText += "\n\n[WARNING: 达到最大循环次数限制]";
+            log.warn("Agent loop reached max iterations {}, force stopping", MAX_ITERATIONS);
+            lastAssistantText += "\n\n[WARNING: Maximum loop iteration limit reached]";
         }
 
         return lastAssistantText;
@@ -256,7 +256,7 @@ public class AgentLoop {
 
         } catch (Exception e) {
             // 流式调用失败 → 降级到阻塞模式
-            log.warn("流式调用失败，降级到阻塞模式: {}", e.getMessage());
+            log.warn("Streaming call failed, falling back to blocking mode: {}", e.getMessage());
             return blockingIteration(prompt);
         }
 
@@ -290,7 +290,7 @@ public class AgentLoop {
             // PreToolUse Hook
             var preHookCtx = new HookManager.HookContext(toolName, parsedArgs);
             if (hookManager.execute(HookManager.HookType.PRE_TOOL_USE, preHookCtx) == HookManager.HookResult.ABORT) {
-                log.info("[{}] PreToolUse Hook 中止了执行", toolName);
+                log.info("[{}] PreToolUse Hook aborted execution", toolName);
                 toolResponses.add(new ToolResponseMessage.ToolResponse(callId, toolName, "Aborted by hook"));
                 continue;
             }
@@ -313,12 +313,12 @@ public class AgentLoop {
                 if (permitted) {
                     result = adapter.call(toolArgs);
                 } else {
-                    result = "Permission denied: 用户拒绝了此操作";
-                    log.info("[{}] 用户拒绝工具执行", toolName);
+                    result = "Permission denied: User rejected this operation";
+                    log.info("[{}] User denied tool execution", toolName);
                 }
             } else {
                 result = "Error: Unknown tool '" + toolName + "'";
-                log.warn("未知工具: {}", toolName);
+                log.warn("Unknown tool: {}", toolName);
             }
 
             // PostToolUse Hook
@@ -433,7 +433,7 @@ public class AgentLoop {
             }
         } catch (Exception e) {
             // thinking 提取失败不影响主流程
-            log.debug("Thinking 内容提取异常（可忽略）: {}", e.getMessage());
+            log.debug("Thinking content extraction exception (can be ignored): {}", e.getMessage());
         }
     }
 

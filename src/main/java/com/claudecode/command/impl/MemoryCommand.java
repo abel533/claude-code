@@ -56,13 +56,13 @@ public class MemoryCommand implements SlashCommand {
     /** 显示项目级 CLAUDE.md */
     private String showProjectMemory() {
         Path projectClaudeMd = Path.of(System.getProperty("user.dir"), "CLAUDE.md");
-        return showMemoryFile(projectClaudeMd, "项目级");
+        return showMemoryFile(projectClaudeMd, "Project");
     }
 
     /** 显示用户级 CLAUDE.md */
     private String showUserMemory() {
         Path userClaudeMd = Path.of(System.getProperty("user.home"), ".claude", "CLAUDE.md");
-        return showMemoryFile(userClaudeMd, "用户级");
+        return showMemoryFile(userClaudeMd, "User");
     }
 
     private String showMemoryFile(Path path, String level) {
@@ -76,17 +76,17 @@ public class MemoryCommand implements SlashCommand {
             try {
                 String content = Files.readString(path, StandardCharsets.UTF_8);
                 if (content.isBlank()) {
-                    sb.append(AnsiStyle.dim("  (文件为空)\n"));
+                    sb.append(AnsiStyle.dim("  (File is empty)\n"));
                 } else {
                     content.lines().forEach(line -> sb.append("  ").append(line).append("\n"));
                 }
             } catch (IOException e) {
-                sb.append(AnsiStyle.red("  ✗ 读取失败: " + e.getMessage() + "\n"));
+                sb.append(AnsiStyle.red("  ✗ Read failed: " + e.getMessage() + "\n"));
             }
         } else {
-            sb.append(AnsiStyle.dim("  (文件不存在)\n\n"));
-            sb.append(AnsiStyle.dim("  使用 /memory add <内容> 创建并添加内容\n"));
-            sb.append(AnsiStyle.dim("  或使用 /init 命令初始化\n"));
+            sb.append(AnsiStyle.dim("  (File does not exist)\n\n"));
+            sb.append(AnsiStyle.dim("  Use /memory add <content> to create and add content\n"));
+            sb.append(AnsiStyle.dim("  Or use /init command to initialize\n"));
         }
 
         return sb.toString();
@@ -95,7 +95,7 @@ public class MemoryCommand implements SlashCommand {
     /** 追加内容到项目级 CLAUDE.md */
     private String handleAdd(String content) {
         if (content.isEmpty()) {
-            return AnsiStyle.yellow("  ⚠ 请提供要添加的内容：/memory add <内容>");
+            return AnsiStyle.yellow("  ⚠ Please provide content: /memory add <content>");
         }
 
         Path projectClaudeMd = Path.of(System.getProperty("user.dir"), "CLAUDE.md");
@@ -105,7 +105,7 @@ public class MemoryCommand implements SlashCommand {
                 Files.writeString(projectClaudeMd,
                         "# CLAUDE.md\n\n" + content + "\n",
                         StandardCharsets.UTF_8);
-                return AnsiStyle.green("  ✓ 已创建 CLAUDE.md 并添加内容");
+                return AnsiStyle.green("  ✓ Created CLAUDE.md and added content");
             }
 
             // 追加内容
@@ -113,9 +113,9 @@ public class MemoryCommand implements SlashCommand {
             String newContent = existing.endsWith("\n") ? existing + "\n" + content + "\n" : existing + "\n\n" + content + "\n";
             Files.writeString(projectClaudeMd, newContent, StandardCharsets.UTF_8);
 
-            return AnsiStyle.green("  ✓ 已追加内容到 CLAUDE.md");
+            return AnsiStyle.green("  ✓ Content appended to CLAUDE.md");
         } catch (IOException e) {
-            return AnsiStyle.red("  ✗ 写入失败: " + e.getMessage());
+            return AnsiStyle.red("  ✗ Write failed: " + e.getMessage());
         }
     }
 
@@ -138,20 +138,20 @@ public class MemoryCommand implements SlashCommand {
                 pb.inheritIO();
                 Process p = pb.start();
                 p.waitFor();
-                return AnsiStyle.green("  ✓ 编辑器已关闭");
+                return AnsiStyle.green("  ✓ Editor closed");
             }
 
             // Windows: 尝试 notepad
             if (System.getProperty("os.name").toLowerCase().contains("win")) {
                 ProcessBuilder pb = new ProcessBuilder("notepad", projectClaudeMd.toString());
                 pb.start(); // 不等待
-                return AnsiStyle.green("  ✓ 已用记事本打开 CLAUDE.md");
+                return AnsiStyle.green("  ✓ Opened CLAUDE.md with Notepad");
             }
 
-            return AnsiStyle.yellow("  ⚠ 未找到编辑器。请设置 EDITOR 环境变量，或手动编辑：\n  " + projectClaudeMd);
+            return AnsiStyle.yellow("  ⚠ No editor found. Set EDITOR environment variable, or manually edit:\n  " + projectClaudeMd);
 
         } catch (Exception e) {
-            return AnsiStyle.red("  ✗ 打开编辑器失败: " + e.getMessage());
+            return AnsiStyle.red("  ✗ Failed to open editor: " + e.getMessage());
         }
     }
 }

@@ -49,16 +49,16 @@ public class ConfigTool implements Tool {
                   "properties": {
                     "action": {
                       "type": "string",
-                      "description": "操作类型：get（获取）或 set（设置）",
+                      "description": "Action type: get or set",
                       "enum": ["get", "set"]
                     },
                     "key": {
                       "type": "string",
-                      "description": "配置项的键名"
+                      "description": "Configuration key name"
                     },
                     "value": {
                       "type": "string",
-                      "description": "配置项的值（仅 set 操作时需要）"
+                      "description": "Configuration value (required for set operation)"
                     }
                   },
                   "required": ["action", "key"]
@@ -79,14 +79,14 @@ public class ConfigTool implements Tool {
         // 解析必填参数: action
         String action = (String) input.get("action");
         if (action == null || action.isBlank()) {
-            return errorJson("参数 'action' 是必填项，可选值: get, set");
+            return errorJson("Parameter 'action' is required, valid values: get, set");
         }
         action = action.trim().toLowerCase();
 
         // 解析必填参数: key
         String key = (String) input.get("key");
         if (key == null || key.isBlank()) {
-            return errorJson("参数 'key' 是必填项且不能为空");
+            return errorJson("Parameter 'key' is required and cannot be empty");
         }
 
         // 获取或初始化配置存储
@@ -102,7 +102,7 @@ public class ConfigTool implements Tool {
         return switch (action) {
             case "get" -> executeGet(key, configStore);
             case "set" -> executeSet(key, input, configStore);
-            default -> errorJson("无效的 action 值: '" + action + "'。可选值: get, set");
+            default -> errorJson("Invalid action value: '" + action + "'. Valid values: get, set");
         };
     }
 
@@ -143,7 +143,7 @@ public class ConfigTool implements Tool {
                       "key": "%s",
                       "value": null,
                       "found": false,
-                      "message": "配置项 '%s' 未找到"
+                      "message": "Config key '%s' not found"
                     }""".formatted(escapeJson(key), escapeJson(key));
         }
 
@@ -168,7 +168,7 @@ public class ConfigTool implements Tool {
                               ConcurrentHashMap<String, String> configStore) {
         String value = (String) input.get("value");
         if (value == null) {
-            return errorJson("set 操作需要提供 'value' 参数");
+            return errorJson("set operation requires 'value' parameter");
         }
 
         // 获取旧值（用于返回信息）
@@ -200,7 +200,7 @@ public class ConfigTool implements Tool {
         }
 
         sb.append("  \"success\": true,\n");
-        sb.append("  \"message\": \"配置项 '").append(escapeJson(key)).append("' 已设置\"\n");
+        sb.append("  \"message\": \"Config key '").append(escapeJson(key)).append("' has been set\"\n");
         sb.append("}");
 
         return sb.toString();

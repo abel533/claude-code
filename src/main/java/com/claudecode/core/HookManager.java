@@ -39,7 +39,7 @@ public class HookManager {
      */
     public void register(HookType type, String name, HookHandler handler) {
         hooks.add(new HookRegistration(type, name, handler, 0));
-        log.debug("注册 Hook: {} [{}]", name, type);
+        log.debug("Registered Hook: {} [{}]", name, type);
     }
 
     /**
@@ -47,7 +47,7 @@ public class HookManager {
      */
     public void register(HookType type, String name, HookHandler handler, int priority) {
         hooks.add(new HookRegistration(type, name, handler, priority));
-        log.debug("注册 Hook: {} [{}] priority={}", name, type, priority);
+        log.debug("Registered Hook: {} [{}] priority={}", name, type, priority);
     }
 
     /**
@@ -72,15 +72,15 @@ public class HookManager {
 
         for (HookRegistration reg : matching) {
             try {
-                log.debug("执行 Hook: {} [{}]", reg.name(), type);
+                log.debug("Executing Hook: {} [{}]", reg.name(), type);
                 HookResult result = reg.handler().handle(context);
 
                 if (result == HookResult.ABORT) {
-                    log.info("Hook [{}] 中止了操作", reg.name());
+                    log.info("Hook [{}] aborted the operation", reg.name());
                     return HookResult.ABORT;
                 }
             } catch (Exception e) {
-                log.warn("Hook [{}] 执行异常: {}", reg.name(), e.getMessage());
+                log.warn("Hook [{}] execution exception: {}", reg.name(), e.getMessage());
                 // Hook 异常不影响主流程
             }
         }

@@ -69,7 +69,7 @@ public class PluginManager {
      * @throws NullPointerException 如果 toolContext 为 null
      */
     public PluginManager(ToolContext toolContext) {
-        this.toolContext = Objects.requireNonNull(toolContext, "toolContext 不能为 null");
+        this.toolContext = Objects.requireNonNull(toolContext, "toolContext cannot be null");
         this.globalPluginDir = Path.of(
                 System.getProperty("user.home"), ".claude-code-java", "plugins");
         this.projectPluginDir = toolContext.getWorkDir().resolve(".claude-code").resolve("plugins");
@@ -84,7 +84,7 @@ public class PluginManager {
     public void loadAll() {
         loadFromDirectory(globalPluginDir, "global");
         loadFromDirectory(projectPluginDir, "project");
-        log.info("共加载 {} 个插件", plugins.size());
+        log.info("Loaded {} plugins in total", plugins.size());
     }
 
     /**
@@ -95,14 +95,14 @@ public class PluginManager {
      */
     private void loadFromDirectory(Path dir, String scope) {
         if (!Files.isDirectory(dir)) {
-            log.debug("插件目录不存在，跳过: {}", dir);
+            log.debug("Plugin directory does not exist, skipping: {}", dir);
             return;
         }
         try (var stream = Files.list(dir)) {
             stream.filter(p -> p.toString().endsWith(".jar"))
                     .forEach(jar -> loadJarPlugin(jar, scope));
         } catch (IOException e) {
-            log.warn("扫描插件目录失败: {}", dir, e);
+            log.warn("Failed to scan plugin directory: {}", dir, e);
         }
     }
 
@@ -130,12 +130,12 @@ public class PluginManager {
                     ? manifest.getMainAttributes().getValue("Plugin-Class")
                     : null;
         } catch (IOException e) {
-            log.error("读取 JAR 清单失败: {}", jarPath.getFileName(), e);
+            log.error("Failed to read JAR manifest: {}", jarPath.getFileName(), e);
             return;
         }
 
         if (pluginClassName == null) {
-            log.warn("JAR {} 缺少 Plugin-Class 属性，跳过", jarPath.getFileName());
+            log.warn("JAR {} missing Plugin-Class attribute, skipping", jarPath.getFileName());
             return;
         }
 
@@ -151,7 +151,7 @@ public class PluginManager {
 
             Class<?> clazz = loader.loadClass(pluginClassName);
             if (!Plugin.class.isAssignableFrom(clazz)) {
-                log.warn("{} 未实现 Plugin 接口，跳过", pluginClassName);
+                log.warn("{} does not implement Plugin interface, skipping", pluginClassName);
                 return;
             }
 
@@ -159,7 +159,7 @@ public class PluginManager {
 
             // 检查插件 ID 是否重复
             if (findPlugin(plugin.id()) != null) {
-                log.warn("插件 ID '{}' 已存在，跳过重复加载: {}", plugin.id(), jarPath.getFileName());
+                log.warn("Plugin ID '{}' already exists, skipping duplicate load: {}", plugin.id(), jarPath.getFileName());
                 return;
             }
 
@@ -169,11 +169,11 @@ public class PluginManager {
             plugin.initialize(ctx);
 
             plugins.add(new PluginInfo(plugin, scope, jarPath, loader));
-            log.info("加载插件: {} v{} [{}] ({})", plugin.name(), plugin.version(), plugin.id(), scope);
+            log.info("Loaded plugin: {} v{} [{}] ({})", plugin.name(), plugin.version(), plugin.id(), scope);
             success = true;
 
         } catch (Exception e) {
-            log.error("加载插件失败: {}", jarPath.getFileName(), e);
+            log.error("Failed to load plugin: {}", jarPath.getFileName(), e);
         } finally {
             // 仅在加载失败时关闭类加载器；成功时由 PluginInfo 持有
             if (!success) {
@@ -190,7 +190,7 @@ public class PluginManager {
      */
     public boolean loadPlugin(Path jarPath) {
         if (!Files.isRegularFile(jarPath) || !jarPath.toString().endsWith(".jar")) {
-            log.warn("无效的插件路径: {}", jarPath);
+            log.warn("Invalid plugin path: {}", jarPath);
             return false;
         }
         loadJarPlugin(jarPath, "dynamic");
@@ -207,7 +207,7 @@ public class PluginManager {
         for (PluginInfo info : plugins) {
             for (Tool tool : info.plugin().getTools()) {
                 toolRegistry.register(tool);
-                log.debug("注册插件工具: {} (来自 {})", tool.name(), info.plugin().name());
+                log.debug("Registered plugin tool: {} (from {})", tool.name(), info.plugin().name());
             }
         }
     }
@@ -221,7 +221,7 @@ public class PluginManager {
         for (PluginInfo info : plugins) {
             for (SlashCommand cmd : info.plugin().getCommands()) {
                 commandRegistry.register(cmd);
-                log.debug("注册插件命令: /{} (来自 {})", cmd.name(), info.plugin().name());
+                log.debug("Registered plugin command: /{} (from {})", cmd.name(), info.plugin().name());
             }
         }
     }
@@ -244,15 +244,15 @@ public class PluginManager {
                 try {
                     info.plugin().destroy();
                 } catch (Exception e) {
-                    log.warn("插件 {} 销毁时异常", pluginId, e);
+                    log.warn("Plugin {} exception during destroy", pluginId, e);
                 }
                 safeClose(info.classLoader());
                 plugins.remove(info); // CopyOnWriteArrayList.remove(Object) 是安全的
-                log.info("已卸载插件: {} ({})", info.plugin().name(), pluginId);
+                log.info("Unloaded plugin: {} ({})", info.plugin().name(), pluginId);
                 return true;
             }
         }
-        log.warn("未找到插件: {}", pluginId);
+        log.warn("Plugin not found: {}", pluginId);
         return false;
     }
 
@@ -306,17 +306,17 @@ public class PluginManager {
      * 然后关闭对应的类加载器。此方法应在应用关闭时调用。
      */
     public void shutdown() {
-        log.info("正在关闭 {} 个插件...", plugins.size());
+        log.info("Shutting down {} plugins...", plugins.size());
         for (PluginInfo info : plugins) {
             try {
                 info.plugin().destroy();
             } catch (Exception e) {
-                log.warn("插件 {} 销毁异常", info.plugin().id(), e);
+                log.warn("Plugin {} exception during destroy", info.plugin().id(), e);
             }
             safeClose(info.classLoader());
         }
         plugins.clear();
-        log.info("所有插件已关闭");
+        log.info("All plugins shut down");
     }
 
     /**
@@ -329,7 +329,7 @@ public class PluginManager {
             try {
                 closeable.close();
             } catch (Exception e) {
-                log.debug("关闭资源时异常 ({}): {}",
+                log.debug("Exception closing resource ({}): {}",
                         closeable.getClass().getSimpleName(), e.getMessage());
             }
         }

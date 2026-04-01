@@ -55,8 +55,8 @@ public class McpToolBridge implements Tool {
      * @param mcpTool    MCP 工具定义
      */
     public McpToolBridge(String serverName, McpClient.McpTool mcpTool) {
-        this.serverName = Objects.requireNonNull(serverName, "服务器名称不能为空");
-        Objects.requireNonNull(mcpTool, "MCP 工具定义不能为空");
+        this.serverName = Objects.requireNonNull(serverName, "Server name cannot be null");
+        Objects.requireNonNull(mcpTool, "MCP tool definition cannot be null");
 
         this.mcpToolName = mcpTool.name();
         this.mcpDescription = mcpTool.description();
@@ -100,13 +100,13 @@ public class McpToolBridge implements Tool {
         // 从上下文获取 McpManager
         McpManager mcpManager = context.get(MCP_MANAGER_KEY);
         if (mcpManager == null) {
-            return "错误: MCP 管理器未在上下文中注册 (key=" + MCP_MANAGER_KEY + ")";
+            return "Error: MCP manager not registered in context (key=" + MCP_MANAGER_KEY + ")";
         }
 
         try {
             return mcpManager.callTool(serverName, mcpToolName, input);
         } catch (McpException e) {
-            return "MCP 工具调用失败 [" + serverName + "/" + mcpToolName + "]: " + e.getMessage();
+            return "MCP tool call failed [" + serverName + "/" + mcpToolName + "]: " + e.getMessage();
         }
     }
 

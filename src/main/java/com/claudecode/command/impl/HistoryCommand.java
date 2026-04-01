@@ -28,12 +28,12 @@ public class HistoryCommand implements SlashCommand {
         var conversations = persistence.listConversations();
 
         if (conversations.isEmpty()) {
-            return AnsiStyle.dim("  📂 暂无保存的对话历史");
+            return AnsiStyle.dim("  📂 No saved conversation history");
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append(AnsiStyle.bold("  📂 对话历史") + AnsiStyle.dim(" (")
-                + conversations.size() + AnsiStyle.dim(" 条记录)\n"));
+        sb.append(AnsiStyle.bold("  📂 Conversation History") + AnsiStyle.dim(" (")
+                + conversations.size() + AnsiStyle.dim(" records)\n"));
         sb.append(AnsiStyle.dim("  " + "─".repeat(50)) + "\n");
 
         int shown = Math.min(conversations.size(), 10);
@@ -46,10 +46,10 @@ public class HistoryCommand implements SlashCommand {
         }
 
         if (conversations.size() > 10) {
-            sb.append(AnsiStyle.dim("  ... 还有 " + (conversations.size() - 10) + " 条更早的记录\n"));
+            sb.append(AnsiStyle.dim("  ... and " + (conversations.size() - 10) + " older records\n"));
         }
 
-        sb.append(AnsiStyle.dim("\n  对话存储位置: " + persistence.getConversationsDir()));
+        sb.append(AnsiStyle.dim("\n  Storage location: " + persistence.getConversationsDir()));
 
         return sb.toString();
     }

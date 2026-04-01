@@ -56,7 +56,7 @@ public class AppConfig {
         try {
             manager.loadFromConfig();
         } catch (Exception e) {
-            log.warn("MCP 配置加载失败（可忽略）: {}", e.getMessage());
+            log.warn("MCP config loading failed (ignorable): {}", e.getMessage());
         }
         return manager;
     }
@@ -168,10 +168,10 @@ public class AppConfig {
             @Qualifier("anthropicChatModel") ChatModel anthropicModel) {
 
         if ("anthropic".equalsIgnoreCase(provider)) {
-            log.info("使用 Anthropic 原生 API");
+            log.info("Using Anthropic native API");
             return anthropicModel;
         } else {
-            log.info("使用 OpenAI 兼容 API");
+            log.info("Using OpenAI compatible API");
             return openAiModel;
         }
     }

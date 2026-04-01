@@ -46,7 +46,7 @@ public class CopyCommand implements SlashCommand {
         }
 
         if (lastResponse == null) {
-            return AnsiStyle.yellow("  ⚠ 暂无 AI 回复可复制");
+            return AnsiStyle.yellow("  ⚠ No AI response to copy");
         }
 
         try {
@@ -56,14 +56,14 @@ public class CopyCommand implements SlashCommand {
 
             int charCount = lastResponse.length();
             int lineCount = (int) lastResponse.lines().count();
-            return AnsiStyle.green("  ✓ 已复制到剪贴板")
-                    + AnsiStyle.dim(" (" + charCount + " 字符, " + lineCount + " 行)");
+            return AnsiStyle.green("  ✓ Copied to clipboard")
+                    + AnsiStyle.dim(" (" + charCount + " chars, " + lineCount + " lines)");
         } catch (java.awt.HeadlessException e) {
             // 无头环境（如 SSH）无法使用 AWT 剪贴板
-            return AnsiStyle.yellow("  ⚠ 当前环境不支持剪贴板（Headless 模式）\n")
-                    + AnsiStyle.dim("    提示：在有图形界面的终端中运行可使用此功能");
+            return AnsiStyle.yellow("  ⚠ Clipboard not supported (headless mode)\n")
+                    + AnsiStyle.dim("    Tip: Run in a graphical terminal to use this feature");
         } catch (Exception e) {
-            return AnsiStyle.red("  ✗ 复制失败: " + e.getMessage());
+            return AnsiStyle.red("  ✗ Copy failed: " + e.getMessage());
         }
     }
 }
