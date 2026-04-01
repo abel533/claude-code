@@ -2,8 +2,11 @@ package com.claudecode.config;
 
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.command.impl.ClearCommand;
+import com.claudecode.command.impl.CompactCommand;
+import com.claudecode.command.impl.CostCommand;
 import com.claudecode.command.impl.ExitCommand;
 import com.claudecode.command.impl.HelpCommand;
+import com.claudecode.command.impl.ModelCommand;
 import com.claudecode.context.ClaudeMdLoader;
 import com.claudecode.context.SystemPromptBuilder;
 import com.claudecode.core.AgentLoop;
@@ -51,6 +54,9 @@ public class AppConfig {
         registry.registerAll(
                 new HelpCommand(),
                 new ClearCommand(),
+                new CompactCommand(),
+                new CostCommand(),
+                new ModelCommand(),
                 new ExitCommand()
         );
         return registry;
