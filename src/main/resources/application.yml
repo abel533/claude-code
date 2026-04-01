@@ -20,15 +20,17 @@ spring:
   # 不启动 Web 服务器（纯 CLI 模式）
   main:
     web-application-type: none
+    banner-mode: off
 
   # 虚拟线程
   threads:
     virtual:
       enabled: true
 
-# 日志
+# 日志：CLI 模式下只显示 WARN 及以上，保持控制台干净
 logging:
   level:
-    com.claudecode: INFO
-    org.springframework.ai: WARN
-    org.springframework.boot.autoconfigure: WARN
+    root: WARN
+    com.claudecode: WARN
+    org.springframework: WARN
+    org.jline: WARN
