@@ -26,6 +26,11 @@ public class TodoWriteTool implements Tool {
     }
 
     @Override
+    public boolean isReadOnly() {
+        return true; // 仅操作内存中的 todo 列表，无文件系统副作用
+    }
+
+    @Override
     public String description() {
         return """
             Manage a todo list for tracking tasks during the conversation. \
