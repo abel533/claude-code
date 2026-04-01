@@ -5,6 +5,7 @@ import com.claudecode.command.CommandContext;
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.console.*;
 import com.claudecode.core.AgentLoop;
+import com.claudecode.core.ConversationPersistence;
 import com.claudecode.tool.ToolRegistry;
 import org.jline.reader.*;
 import org.jline.reader.impl.DefaultParser;
@@ -42,11 +43,14 @@ public class ReplSession {
     private final ToolRegistry toolRegistry;
     private final CommandRegistry commandRegistry;
     private final ProviderInfo providerInfo;
+    private final ConversationPersistence persistence;
     private final PrintStream out;
     private final ToolStatusRenderer toolStatusRenderer;
     private final MarkdownRenderer markdownRenderer;
     private final SpinnerAnimation spinner;
 
+    /** 对话摘要（取第一次用户输入的前40字） */
+    private String conversationSummary = "";
     private volatile boolean running = true;
 
     public ReplSession(AgentLoop agentLoop,
@@ -57,6 +61,7 @@ public class ReplSession {
         this.toolRegistry = toolRegistry;
         this.commandRegistry = commandRegistry;
         this.providerInfo = providerInfo;
+        this.persistence = new ConversationPersistence();
         // 强制使用 UTF-8 编码输出，确保 emoji 等 Unicode 字符在 Windows 终端正常显示
         this.out = new PrintStream(System.out, true, StandardCharsets.UTF_8);
         this.toolStatusRenderer = new ToolStatusRenderer(out);
@@ -163,6 +168,7 @@ public class ReplSession {
                 handleInput(input, cmdContext);
             }
 
+            saveConversation();
             out.println(AnsiStyle.dim("\n  Goodbye! 👋\n"));
         }
     }
@@ -229,10 +235,9 @@ public class ReplSession {
             handleInput(input, cmdContext);
         }
 
+        saveConversation();
         out.println(AnsiStyle.dim("\n  Goodbye! 👋\n"));
     }
-
-    // ==================== 公共输入处理 ====================
 
     /** 处理用户输入（命令分发或 Agent 调用） */
     private void handleInput(String input, CommandContext cmdContext) {
@@ -242,6 +247,11 @@ public class ReplSession {
             result.ifPresent(out::println);
             out.println();
             return;
+        }
+
+        // 记录对话摘要（取第一次用户输入前40字）
+        if (conversationSummary.isEmpty()) {
+            conversationSummary = input.length() > 40 ? input.substring(0, 40) : input;
         }
 
         // Agent 循环（流式输出）
@@ -264,6 +274,23 @@ public class ReplSession {
             log.error("Agent 循环异常", e);
             out.println();
         }
+    }
+
+    /** 退出时保存对话历史 */
+    private void saveConversation() {
+        var history = agentLoop.getMessageHistory();
+        // 只有有实际对话内容时才保存（至少包含系统提示+用户消息+助手回复）
+        if (history.size() > 2) {
+            var file = persistence.save(history, conversationSummary);
+            if (file != null) {
+                out.println(AnsiStyle.dim("  💾 对话已保存: " + file.getFileName()));
+            }
+        }
+    }
+
+    /** 获取对话持久化管理器 */
+    public ConversationPersistence getPersistence() {
+        return persistence;
     }
 
     public void stop() {

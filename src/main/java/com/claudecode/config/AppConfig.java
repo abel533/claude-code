@@ -74,6 +74,7 @@ public class AppConfig {
                 new ContextCommand(),
                 new InitCommand(),
                 new ConfigCommand(),
+                new HistoryCommand(),
                 new ExitCommand()
         );
         return registry;
