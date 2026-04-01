@@ -78,8 +78,11 @@ public class ReplSession {
             }
         });
 
+        // 流式输出第一个 token 到达时停止 spinner
+        agentLoop.setOnStreamStart(() -> spinner.stop());
+
         agentLoop.setOnAssistantMessage(text -> {
-            // 助手文本在 agent 循环结束后由 REPL 统一渲染
+            // 阻塞模式回调：流式模式下由 onToken 实时输出，此回调不触发
         });
     }
 
@@ -241,14 +244,19 @@ public class ReplSession {
             return;
         }
 
-        // Agent 循环
+        // Agent 循环（流式输出）
         try {
             spinner.start("Thinking...");
-            String response = agentLoop.run(input);
-            spinner.stop();
+            out.println(); // 换行准备输出区域
 
-            out.println();
-            markdownRenderer.render(response);
+            // 流式回调：逐 token 输出到终端
+            String response = agentLoop.runStreaming(input, token -> {
+                out.print(token);
+                out.flush();
+            });
+
+            spinner.stop();
+            out.println(); // 流式输出结束后换行
             out.println();
         } catch (Exception e) {
             spinner.stop();
