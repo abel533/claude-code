@@ -119,7 +119,7 @@ public class AskUserQuestionTool implements Tool {
             return "User response: " + userResponse;
 
         } catch (Exception e) {
-            log.error("Failed to get user input", e);
+            log.debug("Failed to get user input", e);
             return "Error: Failed to get user input - " + e.getMessage();
         }
     }

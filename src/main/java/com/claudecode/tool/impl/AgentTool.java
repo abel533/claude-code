@@ -92,7 +92,7 @@ public class AgentTool implements Tool {
             log.info("Sub-agent completed, result length: {} chars", result.length());
             return result;
         } catch (Exception e) {
-            log.error("Sub-agent execution failed", e);
+            log.debug("Sub-agent execution failed", e);
             return "Error: Sub-agent failed: " + e.getMessage();
         }
     }

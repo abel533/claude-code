@@ -192,9 +192,17 @@ public class ReplSession {
                 statusLine.enable(providerInfo.model(), agentLoop.getTokenTracker());
             }
 
+            // 输入框横线宽度
+            int termWidth = terminal.getWidth();
+            int lineWidth = termWidth > 10 ? termWidth - 2 : 78;
+            String inputLine = AnsiStyle.DIM + "─".repeat(lineWidth) + AnsiStyle.RESET;
+
             CommandContext cmdContext = new CommandContext(agentLoop, toolRegistry, commandRegistry, out, () -> running = false);
 
             while (running) {
+                // 输入框上横线
+                out.println(inputLine);
+
                 String input;
                 try {
                     input = reader.readLine(prompt).strip();
@@ -205,6 +213,9 @@ public class ReplSession {
                 } catch (EndOfFileException e) {
                     break;
                 }
+
+                // 输入框下横线
+                out.println(inputLine);
 
                 if (input.isEmpty()) {
                     continue;
@@ -317,12 +328,25 @@ public class ReplSession {
 
             long startTime = System.currentTimeMillis();
 
-            // AI 回复前的 ● 标识
-            out.println(AnsiStyle.BRIGHT_CYAN + "  ● " + AnsiStyle.RESET);
+            // AI 回复前的 ● 标识（不换行，后续流式文本紧跟其后）
+            out.print(AnsiStyle.BRIGHT_CYAN + "  ● " + AnsiStyle.RESET);
 
-            // 流式回调：逐 token 输出到终端
+            // 流式回调：逐 token 输出到终端，自动在每行开头加缩进
+            final boolean[] isNewLine = {false}; // 跟踪是否刚输出换行符
             String response = agentLoop.runStreaming(input, token -> {
-                out.print(token);
+                for (int i = 0; i < token.length(); i++) {
+                    char c = token.charAt(i);
+                    if (c == '\n') {
+                        out.println();
+                        isNewLine[0] = true;
+                    } else {
+                        if (isNewLine[0]) {
+                            out.print("    "); // 续行缩进（与 ● 后文本对齐）
+                            isNewLine[0] = false;
+                        }
+                        out.print(c);
+                    }
+                }
                 out.flush();
             });
 
