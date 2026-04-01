@@ -100,15 +100,16 @@ public class AppConfig {
 
     @Bean
     public ProviderInfo providerInfo() {
+        // 统一使用 AI_BASE_URL / AI_MODEL 环境变量，按 Provider 给不同默认值
         String baseUrl;
         String model;
 
         if ("anthropic".equalsIgnoreCase(provider)) {
-            baseUrl = System.getenv().getOrDefault("ANTHROPIC_BASE_URL", "https://api.anthropic.com");
+            baseUrl = System.getenv().getOrDefault("AI_BASE_URL", "https://api.anthropic.com");
             model = System.getenv().getOrDefault("AI_MODEL", "claude-sonnet-4-20250514");
         } else {
             baseUrl = System.getenv().getOrDefault("AI_BASE_URL", "https://api.openai.com");
-            model = System.getenv().getOrDefault("AI_OPENAI_MODEL", "gpt-4o");
+            model = System.getenv().getOrDefault("AI_MODEL", "gpt-4o");
         }
 
         return new ProviderInfo(provider, baseUrl, model);
