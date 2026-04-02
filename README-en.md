@@ -250,7 +250,7 @@ Treat the team JSONL mailbox protocol in this repo as a teaching implementation,
 ### Clone & Build
 
 ```sh
-git clone https://github.com/abel533/learn-claude-code
+git clone https://github.com/abel533/claude-code
 cd learn-claude-code
 mvn compile                            # 编译项目
 ```

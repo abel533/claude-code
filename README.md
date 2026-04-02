@@ -260,7 +260,7 @@ Spring AI 的 `ChatClient.call()` 内部封装了完整的 agent 循环：调用
 ### 克隆与构建
 
 ```sh
-git clone https://github.com/abel533/learn-claude-code
+git clone https://github.com/abel533/claude-code
 cd learn-claude-code
 mvn compile                            # 编译项目
 ```
