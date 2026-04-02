@@ -186,6 +186,150 @@ public class S01AgentLoop implements CommandLineRunner {
 
 Under 40 lines of core code, and that's the entire agent. The next 11 chapters all layer mechanisms on top of this loop -- the loop itself never changes.
 
+## Source Code Tracing: How the `call()` Internal Loop Is Actually Implemented
+
+The architecture diagram above says "Spring AI auto-loops," but exactly which lines of code make that happen? Below is the complete call chain traced through Spring AI 1.0.3 source code.
+
+### Call Chain Overview
+
+```
+Your code: chatClient.prompt().user(msg).call().chatResponse()
+    │
+    ▼
+① DefaultChatClient.DefaultCallResponseSpec.chatResponse()
+    │  (DefaultChatClient.java:435-437)
+    │  Internally calls doGetObservableChatClientResponse() → advisorChain.nextCall()
+    │
+    ▼
+② Advisor chain (includes your registered ToolCallLoggingAdvisor)
+    │  Each advisor executes in turn; the last node is ChatModelCallAdvisor
+    │
+    ▼
+③ ChatModelCallAdvisor.adviseCall()
+    │  (ChatModelCallAdvisor.java:49-58)
+    │  Core is a single line: this.chatModel.call(prompt)
+    │
+    ▼
+④ AnthropicChatModel.call() → internalCall()
+    │  (AnthropicChatModel.java:169-223)
+    │  ★ This is where the loop lives! Implemented via recursion, not while ★
+```
+
+### Key Source Code: The Recursive Loop in `internalCall`
+
+`AnthropicChatModel.java` lines 176-223 (Spring AI 1.0.3):
+
+```java
+// Entry point
+public ChatResponse call(Prompt prompt) {
+    Prompt requestPrompt = buildRequestPrompt(prompt);
+    return this.internalCall(requestPrompt, null);
+}
+
+// ★ Loop core: recursive self-invocation
+public ChatResponse internalCall(Prompt prompt, ChatResponse previousChatResponse) {
+
+    // ──── Step 1: Send HTTP request to the Anthropic API ────
+    ChatCompletionRequest request = createRequest(prompt, false);
+
+    ChatResponse response = ... // anthropicApi.chatCompletionEntity(request, headers)
+    // This is a real HTTP request
+
+    // ──── Step 2: Check if the response contains tool_use ────
+    if (this.toolExecutionEligibilityPredicate
+            .isToolExecutionRequired(prompt.getOptions(), response)) {
+
+        // ──── Step 3: tool_use found → execute the tool (your BashTool) ────
+        var toolExecutionResult = this.toolCallingManager.executeToolCalls(prompt, response);
+
+        if (toolExecutionResult.returnDirect()) {
+            return ...;  // Tool requests a direct return of results
+        } else {
+            // ──── Step 4: Recursion! Add tool results to history, call self again ────
+            return this.internalCall(
+                new Prompt(toolExecutionResult.conversationHistory(), prompt.getOptions()),
+                response  // Pass previous response (for cumulative token usage)
+            );
+            // ↑ Recursive call — will send another HTTP request to the AI
+        }
+    }
+
+    // ──── Step 5: No tool_use → AI has finished answering, return final result ────
+    return response;
+}
+```
+
+### Line-by-Line Mapping to the Python Version
+
+| Python manual loop | Spring AI automatic implementation |
+|---|---|
+| `while True:` | `internalCall()` recursive self-invocation |
+| `response = client.messages.create(...)` | `anthropicApi.chatCompletionEntity(request, ...)` |
+| `if response.stop_reason != "tool_use": return` | `isToolExecutionRequired()` returns false → directly `return response` |
+| `TOOL_HANDLERS[block.name](block.input)` | `toolCallingManager.executeToolCalls()` → reflection invokes `@Tool` method |
+| `messages.append({"role": "user", "content": [tool_result]})` | `buildConversationHistoryAfterToolExecution()` auto-builds |
+
+### Tool Execution Details: `DefaultToolCallingManager`
+
+When `internalCall` detects `tool_use`, it calls `toolCallingManager.executeToolCalls()`. This method (`DefaultToolCallingManager.java:121-148`) does the following:
+
+```java
+public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+    // 1. Extract tool_call information from the AI response
+    AssistantMessage assistantMessage = ...;
+
+    // 2. For each tool_call, find the corresponding @Tool method and execute it
+    for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+        // Find the ToolCallback by tool name (your BashTool)
+        ToolCallback toolCallback = toolCallbacks.stream()
+            .filter(tool -> toolName.equals(tool.getToolDefinition().name()))
+            .findFirst()...;
+
+        // Invoke the @Tool method via reflection, get result string
+        String toolCallResult = toolCallback.call(finalToolInputArguments, toolContext);
+
+        // Wrap as ToolResponseMessage
+        toolResponses.add(new ToolResponseMessage.ToolResponse(toolCall.id(), toolName, toolCallResult));
+    }
+
+    // 3. Build new conversation history = original messages + assistant(tool_use) + tool_result
+    List<Message> conversationHistory = buildConversationHistoryAfterToolExecution(
+        prompt.getInstructions(), assistantMessage, toolResponseMessage);
+
+    return ToolExecutionResult.builder()
+        .conversationHistory(conversationHistory)
+        .build();
+}
+```
+
+### Complete Flow Example
+
+User says `"Create a file hello.txt"`:
+
+```
+internalCall() Round 1:
+  HTTP → Anthropic: "Create a file hello.txt" + tools=[bash]
+  HTTP ← Anthropic: tool_use(bash, "touch hello.txt")
+  executeToolCalls() → BashTool.bash("touch hello.txt") → ""
+  Recursive call internalCall(history + [assistant(tool_use), tool_result("")])
+
+internalCall() Round 2:
+  HTTP → Anthropic: full history + "The tool just returned an empty string"
+  HTTP ← Anthropic: tool_use(bash, "echo hello > hello.txt")
+  executeToolCalls() → BashTool.bash("echo hello > hello.txt") → ""
+  Recursive call internalCall(history + [assistant(tool_use), tool_result("")])
+
+internalCall() Round 3:
+  HTTP → Anthropic: full history + "The tool just returned an empty string"
+  HTTP ← Anthropic: "I've created hello.txt and written the content for you"
+  isToolExecutionRequired() → false (pure text, no tool_use)
+  return response  ← Exit recursion, return final result
+```
+
+So a single `chatClient.prompt().call()` may trigger **N HTTP requests** (N = number of rounds the AI calls tools + 1 final answer).
+
+> **Note**: The loop is not implemented with `while`, but with **recursion**. `internalCall` calls itself after detecting tool_use, passing the tool results as new conversation history. This approach is better suited for cumulative token usage statistics (passed layer by layer via the `previousChatResponse` parameter).
+
 ## What Changed
 
 | Component     | Before     | After                                          |
@@ -316,3 +460,208 @@ Try these prompts(English prompts work better with LLMs, but Chinese also works)
 2. `List all Java files in this directory`
 3. `What is the current git branch?`
 4. `Create a directory called test_output and write 3 files in it`
+
+## Design Philosophy: Spring AI's 6-Layer Design Patterns
+
+Spring AI has many layers of abstraction -- Builder, Advisor Chain, Observation, Strategy, Recursion, and Callback. Below is a layer-by-layer breakdown of each design pattern, from your code's invocation all the way to the completed HTTP request.
+
+### Panorama: The 6 Layers a `.call()` Passes Through
+
+```
+Your code: chatClient.prompt().user(msg).call().chatResponse()
+          │
+    ┌─────┴─────┐
+    │  Layer 1  │  Builder + Fluent API         ← Construction and assembly
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 2  │  Advisor Chain (Chain of Responsibility)  ← Interception and enhancement
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 3  │  Strategy (Strategy Pattern)  ← Multi-model switching
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 4  │  Observation (Observer)       ← Observability
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 5  │  Recursion + Callback         ← Tool loop
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 6  │  HTTP Request                 ← Final execution
+    └───────────┘
+```
+
+One-sentence summary: **Builder constructs objects, Fluent API guides invocation, Advisor Chain intercepts and enhances, Strategy switches implementations, Observation observes everything, and Recursion drives the loop.**
+
+### Layer 1: Builder Pattern + Fluent API (Fluent Interface)
+
+**Problem solved**: ChatClient has many configuration options (system prompt, tools, advisors, options...). Without Builder, you'd end up with a 10-parameter constructor.
+
+```java
+// Builder pattern: step-by-step construction of a complex object
+ChatClient chatClient = ChatClient.builder(chatModel)    // ① Create Builder
+        .defaultSystem("...")                             // ② Set parameters step by step
+        .defaultTools(new BashTool())
+        .defaultAdvisors(new ToolCallLoggingAdvisor())
+        .build();                                         // ③ Build the final object
+
+// Fluent API (fluent interface): chained calls, each returning this
+chatClient.prompt()     // → ChatClientRequestSpec
+    .user(msg)          // → ChatClientRequestSpec (still itself)
+    .call()             // → CallResponseSpec (different object)
+    .chatResponse();    // → ChatResponse
+```
+
+**Design rationale**: Builder handles the "construction phase" (immutable configuration), while Fluent API handles the "usage phase" (per-request parameters). The two phases return different types of objects, so the compiler can prevent you from calling `.user()` during the construction phase.
+
+Source code references:
+- `DefaultChatClientBuilder.java` -- construction phase
+- `DefaultChatClientRequestSpec` (`DefaultChatClient.java:564`) -- usage phase
+- `DefaultCallResponseSpec` (`DefaultChatClient.java:341`) -- response phase
+
+### Layer 2: Advisor Chain -- Chain of Responsibility Pattern
+
+**Problem solved**: Insert cross-cutting concerns (logging, caching, authorization, tool call recording) without modifying the core invocation logic.
+
+```
+Request → ToolCallLoggingAdvisor → ChatModelCallAdvisor → HTTP
+              ↓                        ↓
+         Print tool calls          Call chatModel.call()
+```
+
+```java
+// DefaultChatClient.java:921-931 — Build the chain
+private BaseAdvisorChain buildAdvisorChain() {
+    // User-registered advisors
+    this.advisors.add(new ToolCallLoggingAdvisor());
+
+    // End of chain: the advisor that actually calls the AI (framework auto-added terminator)
+    this.advisors.add(ChatModelCallAdvisor.builder()
+            .chatModel(this.chatModel).build());
+
+    return DefaultAroundAdvisorChain.builder(observationRegistry)
+            .pushAll(this.advisors)
+            .build();
+}
+```
+
+Each Advisor's interface (analogous to Servlet Filter):
+
+```java
+// CallAdvisor.java — analogous to the Filter interface
+public interface CallAdvisor {
+    ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain);
+    //                                                request          chain (calls next)
+}
+
+// ToolCallLoggingAdvisor — analogous to Filter.doFilter()
+public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
+    ChatClientResponse response = chain.nextCall(request);  // Pass it down the chain first
+    // Then extract tool call information from the response and print it
+    ... print toolCalls ...
+    return response;
+}
+```
+
+**Analogy**: Completely isomorphic to Servlet Filter, Spring HandlerInterceptor, and Express Middleware. `chain.next()` = `filterChain.doFilter()`.
+
+### Layer 3: Strategy Pattern
+
+**Problem solved**: Your code programs against the `ChatModel` interface only; at runtime it can be Anthropic, OpenAI, or any implementation.
+
+```java
+// ChatModel interface — the strategy abstraction
+public interface ChatModel {
+    ChatResponse call(Prompt prompt);
+}
+
+// AnthropicChatModel — strategy implementation A
+// OpenAiChatModel   — strategy implementation B
+```
+
+Your code never directly references `AnthropicChatModel`:
+
+```java
+// S01AgentLoop.java:52 — Injected is the interface, not the implementation
+public S01AgentLoop(AiConfig aiConfig) {
+    this.chatClient = ChatClient.builder(aiConfig.get())  // aiConfig.get() returns ChatModel
+            ...
+```
+
+Spring Boot auto-configuration determines which implementation to inject based on the starter on the classpath:
+
+| Starter on classpath | Injected implementation |
+|---|---|
+| `spring-ai-starter-model-anthropic` | `AnthropicChatModel` |
+| `spring-ai-starter-model-openai` | `OpenAiChatModel` |
+
+### Layer 4: Observation Pattern (Observer Pattern / Observability)
+
+**Problem solved**: Instrument the entire invocation process without intruding on business logic. Supports Micrometer metrics, distributed tracing, logging, and more.
+
+```java
+// DefaultChatClient.java:464-474 — Wraps the entire advisor chain call
+var observation = ChatClientObservationDocumentation.AI_CHAT_CLIENT
+    .observation(this.observationConvention, ..., this.observationRegistry);
+
+var chatClientResponse = observation.observe(() -> {
+    // ← The "action" being observed
+    return this.advisorChain.nextCall(chatClientRequest);
+});
+// observation automatically records: start time, end time, exceptions, tags, etc.
+```
+
+The same pattern exists inside `AnthropicChatModel.internalCall()` and also inside `DefaultToolCallingManager.executeToolCall()`. Three nested Observation layers:
+
+```
+ChatClient Observation          ← Layer 1: entire call() process
+  └─ ChatModel Observation      ← Layer 2: single HTTP request
+       └─ ToolCall Observation   ← Layer 3: individual tool execution
+```
+
+**Design rationale**: A hybrid of Observer pattern and Decorator. `observation.observe(supplier)` essentially adds `onStart()` / `onStop()` / `onError()` hooks before and after the supplier.
+
+### Layer 5: Recursive + Callback — Recursion + Callback
+
+**Problem solved**: The AI may call tools across multiple consecutive rounds, requiring a loop mechanism.
+
+```java
+// AnthropicChatModel.java:206-220 — Recursive loop
+if (hasToolUse) {
+    var result = toolCallingManager.executeToolCalls(prompt, response);
+    return this.internalCall(        // ← Recursion! Calls itself
+        new Prompt(result.conversationHistory(), prompt.getOptions()),
+        response
+    );
+}
+return response;  // No tool_use → exit
+```
+
+Tool execution callback mechanism:
+
+```java
+// DefaultToolCallingManager.java:186-243
+for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+    // Find your registered ToolCallback by tool name
+    ToolCallback toolCallback = toolCallbacks.stream()
+        .filter(tool -> toolName.equals(tool.getToolDefinition().name()))
+        .findFirst()...;
+
+    // Callback: invoke the @Tool-annotated method via reflection
+    String result = toolCallback.call(arguments, toolContext);
+}
+```
+
+**Design rationale**:
+- **Recursion** replaces the while loop, naturally suited for passing accumulated state (token usage)
+- **Callback pattern** (`ToolCallback`) decouples "what tool the AI wants to call" from "how the tool executes"
+
+### Summary Comparison Table
+
+| Pattern | Where | Problem Solved |
+|---|---|---|
+| **Builder** | `ChatClient.builder()` | Step-by-step construction of complex objects |
+| **Fluent API** | `.prompt().user().call()` | Readability and type safety of the invocation interface |
+| **Chain of Responsibility** | Advisor Chain | Pluggable cross-cutting concerns (logging, monitoring) |
+| **Strategy** | `ChatModel` interface | Transparent switching between AI providers |
+| **Observer** | Micrometer Observation | Non-intrusive observability instrumentation |
+| **Recursive + Callback** | `internalCall()` + `ToolCallback` | Decoupling of tool loop and tool execution |

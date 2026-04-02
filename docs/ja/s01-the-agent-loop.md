@@ -186,6 +186,150 @@ public class S01AgentLoop implements CommandLineRunner {
 
 コアコード40行未満、これがエージェント全体だ。残り11章はすべてこのループの上にメカニズムを積み重ねる -- ループ自体は決して変わらない。
 
+## ソースコード追跡：`call()` 内部ループの具体的な実装
+
+上のアーキテクチャ図では「Spring AI が自動ループ」と説明したが、具体的にどの行のコードで実装されているのか？以下は Spring AI 1.0.3 ソースコードの完全な呼び出しチェーンの追跡である。
+
+### 呼び出しチェーン全体像
+
+```
+あなたのコード: chatClient.prompt().user(msg).call().chatResponse()
+    │
+    ▼
+① DefaultChatClient.DefaultCallResponseSpec.chatResponse()
+    │  (DefaultChatClient.java:435-437)
+    │  内部で doGetObservableChatClientResponse() → advisorChain.nextCall() を呼び出し
+    │
+    ▼
+② Advisor チェーン（登録した ToolCallLoggingAdvisor を含む）
+    │  各 advisor を順次実行、最後のノードは ChatModelCallAdvisor
+    │
+    ▼
+③ ChatModelCallAdvisor.adviseCall()
+    │  (ChatModelCallAdvisor.java:49-58)
+    │  実質1行: this.chatModel.call(prompt)
+    │
+    ▼
+④ AnthropicChatModel.call() → internalCall()
+    │  (AnthropicChatModel.java:169-223)
+    │  ★ ここがループ！while ではなく再帰で実装されている ★
+```
+
+### 重要ソースコード：`internalCall` の再帰ループ
+
+`AnthropicChatModel.java` 第 176-223 行（Spring AI 1.0.3）：
+
+```java
+// エントリポイント
+public ChatResponse call(Prompt prompt) {
+    Prompt requestPrompt = buildRequestPrompt(prompt);
+    return this.internalCall(requestPrompt, null);
+}
+
+// ★ ループの核心：自身を再帰呼び出し
+public ChatResponse internalCall(Prompt prompt, ChatResponse previousChatResponse) {
+
+    // ──── ステップ 1：Anthropic API に HTTP リクエストを送信 ────
+    ChatCompletionRequest request = createRequest(prompt, false);
+
+    ChatResponse response = ... // anthropicApi.chatCompletionEntity(request, headers)
+    // ここで実際の HTTP リクエストが発生
+
+    // ──── ステップ 2：レスポンスに tool_use があるかチェック ────
+    if (this.toolExecutionEligibilityPredicate
+            .isToolExecutionRequired(prompt.getOptions(), response)) {
+
+        // ──── ステップ 3：tool_use あり → ツールを実行（あなたの BashTool）────
+        var toolExecutionResult = this.toolCallingManager.executeToolCalls(prompt, response);
+
+        if (toolExecutionResult.returnDirect()) {
+            return ...;  // ツールが直接結果を返すことを要求
+        } else {
+            // ──── ステップ 4：再帰！ツール結果を履歴に追加し、再度自分自身を呼び出し ────
+            return this.internalCall(
+                new Prompt(toolExecutionResult.conversationHistory(), prompt.getOptions()),
+                response  // 前回のレスポンスを渡す（累積 token 使用量の集計用）
+            );
+            // ↑ ここが再帰呼び出し。再度 AI に HTTP リクエストを送信する
+        }
+    }
+
+    // ──── ステップ 5：tool_use なし → AI の回答完了、最終結果を返す ────
+    return response;
+}
+```
+
+### Python 版との行単位の対応表
+
+| Python 手動ループ | Spring AI 自動実装 |
+|---|---|
+| `while True:` | `internalCall()` が自身を再帰呼び出し |
+| `response = client.messages.create(...)` | `anthropicApi.chatCompletionEntity(request, ...)` |
+| `if response.stop_reason != "tool_use": return` | `isToolExecutionRequired()` が false を返す → そのまま `return response` |
+| `TOOL_HANDLERS[block.name](block.input)` | `toolCallingManager.executeToolCalls()` → リフレクションで `@Tool` メソッドを呼び出し |
+| `messages.append({"role": "user", "content": [tool_result]})` | `buildConversationHistoryAfterToolExecution()` が自動構築 |
+
+### ツール実行の詳細：`DefaultToolCallingManager`
+
+`internalCall` が `tool_use` を検出すると、`toolCallingManager.executeToolCalls()` を呼び出す。このメソッド（`DefaultToolCallingManager.java:121-148`）が行う処理：
+
+```java
+public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+    // 1. AI レスポンスから tool_call 情報を抽出
+    AssistantMessage assistantMessage = ...;
+
+    // 2. 各 tool_call について、対応する @Tool メソッドを見つけて実行
+    for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+        // ツール名で ToolCallback（あなたの BashTool）を検索
+        ToolCallback toolCallback = toolCallbacks.stream()
+            .filter(tool -> toolName.equals(tool.getToolDefinition().name()))
+            .findFirst()...;
+
+        // リフレクションで @Tool メソッドを呼び出し、結果文字列を取得
+        String toolCallResult = toolCallback.call(finalToolInputArguments, toolContext);
+
+        // ToolResponseMessage にラップ
+        toolResponses.add(new ToolResponseMessage.ToolResponse(toolCall.id(), toolName, toolCallResult));
+    }
+
+    // 3. 新しい会話履歴を構築 = 元のメッセージ + assistant(tool_use) + tool_result
+    List<Message> conversationHistory = buildConversationHistoryAfterToolExecution(
+        prompt.getInstructions(), assistantMessage, toolResponseMessage);
+
+    return ToolExecutionResult.builder()
+        .conversationHistory(conversationHistory)
+        .build();
+}
+```
+
+### 完全なフロー例
+
+ユーザーが `"hello.txt というファイルを作成して"` と入力した場合：
+
+```
+internalCall() 第 1 ラウンド:
+  HTTP → Anthropic: "hello.txt というファイルを作成して" + tools=[bash]
+  HTTP ← Anthropic: tool_use(bash, "touch hello.txt")
+  executeToolCalls() → BashTool.bash("touch hello.txt") → ""
+  再帰呼び出し internalCall(history + [assistant(tool_use), tool_result("")])
+
+internalCall() 第 2 ラウンド:
+  HTTP → Anthropic: 完全な履歴 + "先ほどツールは空文字列を返しました"
+  HTTP ← Anthropic: tool_use(bash, "echo hello > hello.txt")
+  executeToolCalls() → BashTool.bash("echo hello > hello.txt") → ""
+  再帰呼び出し internalCall(history + [assistant(tool_use), tool_result("")])
+
+internalCall() 第 3 ラウンド:
+  HTTP → Anthropic: 完全な履歴 + "先ほどツールは空文字列を返しました"
+  HTTP ← Anthropic: "hello.txt を作成し、内容を書き込みました"
+  isToolExecutionRequired() → false（純テキスト、tool_use なし）
+  return response  ← 再帰から抜け、最終結果を返す
+```
+
+つまり、1回の `chatClient.prompt().call()` で **N 回の HTTP リクエスト**が発生する可能性がある（N = AI がツールを呼び出すラウンド数 + 最終回答の 1 回）。
+
+> **注意**: ループは `while` ではなく**再帰**で実装されている。`internalCall` は `tool_use` を検出すると自身を呼び出し、ツール結果を新しい会話履歴として渡す。この手法は while よりも累積 token 使用量の統計に適している（`previousChatResponse` パラメータで階層的に渡される）。
+
 ## 変更点
 
 | コンポーネント  | 変更前     | 変更後                                           |
@@ -316,3 +460,208 @@ Spring AI の `ChatModel` は統一された抽象インターフェース。異
 2. `List all Java files in this directory`
 3. `What is the current git branch?`
 4. `Create a directory called test_output and write 3 files in it`
+
+## 設計思想：Spring AI の 6 層デザインパターン
+
+Spring AI には多くのカプセル化レイヤーがある -- Builder、Advisor Chain、Observation、Strategy、再帰、Callback。以下では、あなたのコードから呼び出しが発行されてから HTTP リクエストが完了するまで、各デザインパターンを層ごとに分解して解説する。
+
+### 全景図：1つの `.call()` が通過する 6 層
+
+```
+あなたのコード: chatClient.prompt().user(msg).call().chatResponse()
+          │
+    ┌─────┴─────┐
+    │  Layer 1  │  Builder + Fluent API     ← 構築と組み立て
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 2  │  Advisor Chain (責任チェーン)   ← 拦截と拡張
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 3  │  Strategy (ストラテジーパターン)      ← マルチモデル切替
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 4  │  Observation (オブザーバー)     ← オブザーバビリティ
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 5  │  Recursion + Callback     ← ツールループ
+    └─────┬─────┘
+    ┌─────┴─────┐
+    │  Layer 6  │  HTTP Request             ← 最終的な実行
+    └───────────┘
+```
+
+一言でまとめると：**Builder がオブジェクトを構築し、Fluent API が呼び出しを導き、Advisor Chain が拦截して拡張し、Strategy が実装を切り替え、Observation がすべてを監視し、Recursion がループを駆動する。**
+
+### Layer 1: Builder パターン + Fluent API（流れるようなインターフェース）
+
+**解決する問題**：ChatClient の設定項目は多数ある（system prompt、tools、advisors、options...）。Builder を使わないと、10 個のパラメータを持つコンストラクタになってしまう。
+
+```java
+// Builder パターン：複雑なオブジェクトを段階的に構築
+ChatClient chatClient = ChatClient.builder(chatModel)    // ① Builder を作成
+        .defaultSystem("...")                             // ② 段階的にパラメータを設定
+        .defaultTools(new BashTool())
+        .defaultAdvisors(new ToolCallLoggingAdvisor())
+        .build();                                         // ③ 最終オブジェクトを構築
+
+// Fluent API（流れるようなインターフェース）：メソッドチェーン、毎回 this を返す
+chatClient.prompt()     // → ChatClientRequestSpec
+    .user(msg)          // → ChatClientRequestSpec（自分自身を返す）
+    .call()             // → CallResponseSpec（別のオブジェクトに切り替え）
+    .chatResponse();    // → ChatResponse
+```
+
+**設計思想**：Builder は「構築フェーズ」（不変の設定）を担当し、Fluent API は「使用フェーズ」（リクエストごとのパラメータ）を担当する。2つのフェーズは異なる型のオブジェクトを返すため、コンパイラが構築フェーズで `.user()` を呼び出すのを防ぐことができる。
+
+ソースコードでの体現：
+- `DefaultChatClientBuilder.java` -- 構築フェーズ
+- `DefaultChatClientRequestSpec`（`DefaultChatClient.java:564`）-- 使用フェーズ
+- `DefaultCallResponseSpec`（`DefaultChatClient.java:341`）-- レスポンスフェーズ
+
+### Layer 2: Advisor Chain -- 責任チェーンパターン（Chain of Responsibility）
+
+**解決する問題**：コアの呼び出しロジックを変更することなく、横断的関心事（ログ、キャッシュ、権限、ツール呼び出し記録）を挿入する。
+
+```
+リクエスト → ToolCallLoggingAdvisor → ChatModelCallAdvisor → HTTP
+                  ↓                        ↓
+              ツール呼び出しを出力        chatModel.call() を呼び出し
+```
+
+```java
+// DefaultChatClient.java:921-931 -- チェーンの構築
+private BaseAdvisorChain buildAdvisorChain() {
+    // ユーザーが登録した advisor
+    this.advisors.add(new ToolCallLoggingAdvisor());
+
+    // チェーンの末尾：実際に AI を呼び出す advisor（フレームワークが自動追加するターミネータ）
+    this.advisors.add(ChatModelCallAdvisor.builder()
+            .chatModel(this.chatModel).build());
+
+    return DefaultAroundAdvisorChain.builder(observationRegistry)
+            .pushAll(this.advisors)
+            .build();
+}
+```
+
+各 Advisor のインターフェース（Servlet Filter に類似）：
+
+```java
+// CallAdvisor.java -- Filter インターフェースに類似
+public interface CallAdvisor {
+    ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain);
+    //                                                リクエスト          チェーン（次を呼び出す）
+}
+
+// ToolCallLoggingAdvisor -- Filter.doFilter() に類似
+public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
+    ChatClientResponse response = chain.nextCall(request);  // 先に後続に渡す
+    // その後 response からツール呼び出し情報を抽出して出力
+    ... print toolCalls ...
+    return response;
+}
+```
+
+**類似例**：Servlet Filter、Spring HandlerInterceptor、Express Middleware と全く同じ構造。`chain.next()` = `filterChain.doFilter()`。
+
+### Layer 3: Strategy パターン（ストラテジーパターン）
+
+**解決する問題**：あなたのコードは `ChatModel` インターフェースに対してのみプログラムし、実行時には Anthropic、OpenAI、または任意の実装を使用できる。
+
+```java
+// ChatModel インターフェース -- ストラテジーの抽象
+public interface ChatModel {
+    ChatResponse call(Prompt prompt);
+}
+
+// AnthropicChatModel -- ストラテジー実装 A
+// OpenAiChatModel   -- ストラテジー実装 B
+```
+
+あなたのコードには `AnthropicChatModel` は直接登場しない：
+
+```java
+// S01AgentLoop.java:52 -- 注入されるのはインターフェース、実装ではない
+public S01AgentLoop(AiConfig aiConfig) {
+    this.chatClient = ChatClient.builder(aiConfig.get())  // aiConfig.get() は ChatModel を返す
+            ...
+```
+
+Spring Boot の自動設定が classpath 上の starter に基づいて注入する実装を決定する：
+
+| classpath 上にあるもの | 注入される実装 |
+|---|---|
+| `spring-ai-starter-model-anthropic` | `AnthropicChatModel` |
+| `spring-ai-starter-model-openai` | `OpenAiChatModel` |
+
+### Layer 4: Observation パターン（オブザーバーパターン / オブザーバビリティ）
+
+**解決する問題**：呼び出しプロセス全体に計測ポイントを埋め込み、ビジネスロジックに侵入しない。Micrometer メトリクス、分散トレーシング、ログなどをサポート。
+
+```java
+// DefaultChatClient.java:464-474 -- advisor chain 呼び出し全体をラップ
+var observation = ChatClientObservationDocumentation.AI_CHAT_CLIENT
+    .observation(this.observationConvention, ..., this.observationRegistry);
+
+var chatClientResponse = observation.observe(() -> {
+    // ← 監視される「アクション」
+    return this.advisorChain.nextCall(chatClientRequest);
+});
+// observation が自動的に記録: 開始時刻、終了時刻、例外、タグなど
+```
+
+同じパターンが `AnthropicChatModel.internalCall()` にも1層あり、`DefaultToolCallingManager.executeToolCall()` にもさらにもう1層ある。3層の Observation がネストしている：
+
+```
+ChatClient Observation          ← 第 1 層：call() プロセス全体
+  └─ ChatModel Observation      ← 第 2 層：単一の HTTP リクエスト
+       └─ ToolCall Observation   ← 第 3 層：個々のツール実行
+```
+
+**設計思想**：オブザーバーパターンとデコレータのハイブリッド。`observation.observe(supplier)` は本質的に supplier の前後に `onStart()` / `onStop()` / `onError()` フックを追加している。
+
+### Layer 5: Recursive + Callback -- 再帰 + コールバック
+
+**解決する問題**：AI は連続して複数回ツールを呼び出す可能性があり、ループメカニズムが必要。
+
+```java
+// AnthropicChatModel.java:206-220 -- 再帰ループ
+if (hasToolUse) {
+    var result = toolCallingManager.executeToolCalls(prompt, response);
+    return this.internalCall(        // ← 再帰！自分自身を呼び出し
+        new Prompt(result.conversationHistory(), prompt.getOptions()),
+        response
+    );
+}
+return response;  // tool_use なし → 終了
+```
+
+ツール実行のコールバックメカニズム：
+
+```java
+// DefaultToolCallingManager.java:186-243
+for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+    // ツール名で登録した ToolCallback を検索
+    ToolCallback toolCallback = toolCallbacks.stream()
+        .filter(tool -> toolName.equals(tool.getToolDefinition().name()))
+        .findFirst()...;
+
+    // コールバック：リフレクションで @Tool アノテーション付きメソッドを呼び出し
+    String result = toolCallback.call(arguments, toolContext);
+}
+```
+
+**設計思想**：
+- **再帰**が while ループの代わりとなり、累積状態（token 使用量）の受け渡しに自然に適している
+- **Callback パターン**（`ToolCallback`）が「AI がどのツールを呼び出したいか」と「ツールをどう実行するか」を疎結合にする
+
+### まとめ対応表
+
+| パターン | 場所 | 解決する問題 |
+|---|---|---|
+| **Builder** | `ChatClient.builder()` | 複雑なオブジェクトの段階的構築 |
+| **Fluent API** | `.prompt().user().call()` | 呼び出しインターフェースの可読性と型安全性 |
+| **Chain of Responsibility** | Advisor Chain | 横断的関心事のプラグイン可能性（ログ、監視） |
+| **Strategy** | `ChatModel` インターフェース | 複数 AI プロバイダーの透過的切り替え |
+| **Observer** | Micrometer Observation | 非侵入なオブザーバビリティの計測ポイント |
+| **Recursive + Callback** | `internalCall()` + `ToolCallback` | ツールループとツール実行の疎結合化 |
