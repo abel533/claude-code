@@ -1,6 +1,7 @@
 package com.claudecode.core;
 
 import com.claudecode.core.compact.AutoCompactManager;
+import com.claudecode.permission.DenialTracker;
 import com.claudecode.permission.PermissionRuleEngine;
 import com.claudecode.permission.PermissionTypes.PermissionChoice;
 import com.claudecode.permission.PermissionTypes.PermissionDecision;
@@ -61,6 +62,9 @@ public class AgentLoop {
 
     /** 自动压缩管理器（可选） */
     private AutoCompactManager autoCompactManager;
+
+    /** 拒绝追踪器 */
+    private final DenialTracker denialTracker = new DenialTracker();
 
     /** 消息历史 —— 自行管理，不依赖 Spring AI ChatMemory */
     private final List<Message> messageHistory = new ArrayList<>();
@@ -339,20 +343,32 @@ public class AgentLoop {
                             toolName, parsedArgs, adapter.getTool().isReadOnly());
                     if (decision.isAllowed()) {
                         permitted = true;
+                        denialTracker.recordSuccess();
                     } else if (decision.isDenied()) {
                         permitted = false;
+                        denialTracker.recordDenial();
                         log.info("[{}] Denied by rule: {}", toolName, decision.reason());
                     } else if (decision.needsAsk() && onPermissionRequest != null) {
+                        // 拒绝追踪：连续拒绝过多时强制回退到手动提示
+                        if (denialTracker.shouldFallbackToPrompting()) {
+                            log.info("[{}] Denial threshold reached, forcing manual prompt", toolName);
+                        }
                         String activity = adapter.getTool().activityDescription(parsedArgs);
                         PermissionRequest req = new PermissionRequest(toolName, toolArgs, activity);
                         req.setDecision(decision);
                         PermissionChoice choice = onPermissionRequest.apply(req);
                         permitted = (choice == PermissionChoice.ALLOW_ONCE || choice == PermissionChoice.ALWAYS_ALLOW);
+                        if (permitted) {
+                            denialTracker.recordSuccess();
+                        } else {
+                            denialTracker.recordDenial();
+                        }
                         // 持久化用户选择
                         String command = parsedArgs != null ? (String) parsedArgs.get("command") : null;
                         permissionEngine.applyChoice(choice, toolName, command);
                     } else {
                         permitted = false;
+                        denialTracker.recordDenial();
                     }
                 } else if (!adapter.getTool().isReadOnly() && onPermissionRequest != null) {
                     // 传统回调模式（向后兼容）

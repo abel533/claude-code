@@ -87,7 +87,13 @@ public class FullCompact {
                 }
             } catch (Exception e) {
                 log.warn("Full compact attempt failed (drop={}): {}", dropCount, e.getMessage());
-                // PTL error — drop oldest round and retry
+                // 尝试解析 PTL gap 以计算需要丢弃的 round 数
+                int gapDrop = parsePtlGap(e, remaining);
+                if (gapDrop > 1) {
+                    dropCount += gapDrop;
+                    log.info("PTL gap parsed: dropping {} additional rounds", gapDrop);
+                    continue;
+                }
             }
 
             dropCount++;
@@ -172,4 +178,39 @@ public class FullCompact {
 
     /** API Round：一个用户请求 + AI 响应 + 工具调用的完整回合 */
     private record ApiRound(List<Message> messages) {}
+
+    /**
+     * 尝试从 PTL 错误中解析 token gap，计算需要丢弃的 round 数。
+     * API 错误消息格式类似: "prompt is too long: 250000 tokens > 200000 token limit"
+     * 返回建议丢弃的 round 数，如果无法解析返回 0。
+     */
+    private int parsePtlGap(Exception e, List<ApiRound> rounds) {
+        String msg = e.getMessage();
+        if (msg == null) return 0;
+
+        // 尝试从错误消息中提取 token 数字
+        // 格式: "NNN tokens > NNN token limit" 或类似变体
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\d+)\\s*tokens?\\s*>\\s*(\\d+)")
+                .matcher(msg);
+        if (!m.find()) return 0;
+
+        try {
+            long actual = Long.parseLong(m.group(1));
+            long limit = Long.parseLong(m.group(2));
+            long gap = actual - limit;
+            if (gap <= 0) return 0;
+
+            // 估算每个 round 的 token 数（粗略平均）
+            long avgTokensPerRound = actual / Math.max(rounds.size(), 1);
+            if (avgTokensPerRound <= 0) return 0;
+
+            int roundsToDrop = (int) Math.ceil((double) gap / avgTokensPerRound);
+            // 保守：丢弃 ~20% 的 round（与 TS 一致的回退策略）
+            int fallbackDrop = Math.max(1, (int) Math.floor(rounds.size() * 0.2));
+            return Math.min(roundsToDrop, fallbackDrop);
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
 }

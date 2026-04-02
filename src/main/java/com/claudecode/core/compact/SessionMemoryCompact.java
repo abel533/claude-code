@@ -39,6 +39,9 @@ public class SessionMemoryCompact {
     /** 每字符估算的 token 数（粗略近似） */
     private static final double CHARS_PER_TOKEN = 4.0;
 
+    /** token 估算安全系数（偏保守，对应 TS 的 4/3 乘数） */
+    private static final double ESTIMATION_SAFETY_FACTOR = 4.0 / 3.0;
+
     private static final String SUMMARY_PROMPT = """
             Summarize the following conversation segment concisely but thoroughly.
             Preserve:
@@ -239,7 +242,7 @@ public class SessionMemoryCompact {
             default -> "";
         };
         if (text == null || text.isEmpty()) return 10; // 最小估算
-        return (long) (text.length() / CHARS_PER_TOKEN);
+        return (long) (text.length() / CHARS_PER_TOKEN * ESTIMATION_SAFETY_FACTOR);
     }
 
     /** 提取上一次的摘要文本 */

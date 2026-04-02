@@ -3,13 +3,18 @@ package com.claudecode.core.compact;
 import com.claudecode.core.compact.CompactionResult.CompactLayer;
 import org.springframework.ai.chat.messages.*;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
  * 微压缩 —— 在每次 API 调用后执行，裁剪旧的 tool_result 内容。
  * <p>
  * 对应 claude-code 的 microCompact。不需要额外 API 调用，纯本地操作。
- * 策略：保留最近 N 轮的 tool 结果，更早的只保留摘要行 "[Tool result truncated]"。
+ * 策略：
+ * <ul>
+ *   <li>保留最近 N 轮的 tool 结果，更早的只保留摘要行</li>
+ *   <li>时间感知：空闲超过 gapThresholdMinutes 后主动清理</li>
+ * </ul>
  */
 public class MicroCompact {
 
@@ -22,6 +27,20 @@ public class MicroCompact {
     /** 截断后的占位文本 */
     private static final String TRUNCATED_MARKER = "[Tool result truncated — %d chars omitted]";
 
+    /** 时间感知：空闲超过此分钟数后减少保留数量 */
+    private static final int GAP_THRESHOLD_MINUTES = 10;
+
+    /** 空闲时保留的 tool result 数量（更激进的清理） */
+    private static final int KEEP_RECENT_AFTER_GAP = 2;
+
+    /** 上次活跃时间 */
+    private Instant lastActivityTime = Instant.now();
+
+    /** 更新活跃时间（每次 API 调用后调用） */
+    public void recordActivity() {
+        lastActivityTime = Instant.now();
+    }
+
     /**
      * 对消息历史执行微压缩。
      * 直接在原始列表上原地修改以提升性能。
@@ -33,13 +52,19 @@ public class MicroCompact {
         int totalToolResponses = 0;
         int truncated = 0;
 
+        // 时间感知：空闲超时后使用更激进的保留策略
+        long minutesSinceLastActivity = java.time.Duration.between(lastActivityTime, Instant.now()).toMinutes();
+        int keepRecent = minutesSinceLastActivity >= GAP_THRESHOLD_MINUTES
+                ? KEEP_RECENT_AFTER_GAP
+                : KEEP_RECENT_TOOL_RESULTS;
+
         // 倒序扫描，找到所有 ToolResponseMessage 的位置
         int recentCount = 0;
         for (int i = history.size() - 1; i >= 0; i--) {
             if (history.get(i) instanceof ToolResponseMessage) {
                 totalToolResponses++;
                 recentCount++;
-                if (recentCount > KEEP_RECENT_TOOL_RESULTS) {
+                if (recentCount > keepRecent) {
                     // 需要截断
                     ToolResponseMessage trm = (ToolResponseMessage) history.get(i);
                     if (shouldTruncate(trm)) {

@@ -158,13 +158,14 @@ public class ConfigCommand implements SlashCommand {
                 case "accept-edits", "acceptedits" -> PermissionMode.ACCEPT_EDITS;
                 case "bypass" -> PermissionMode.BYPASS;
                 case "dont-ask", "dontask" -> PermissionMode.DONT_ASK;
+                case "plan" -> PermissionMode.PLAN;
                 default -> throw new IllegalArgumentException(value);
             };
             permissionSettings.setCurrentMode(mode);
             return AnsiStyle.green("  ✅ Permission mode set to: " + mode);
         } catch (IllegalArgumentException e) {
             return AnsiStyle.yellow("  ⚠ Unknown mode: " + value) + "\n"
-                    + AnsiStyle.dim("  Available: default, accept-edits, bypass, dont-ask");
+                    + AnsiStyle.dim("  Available: default, accept-edits, bypass, dont-ask, plan");
         }
     }
 

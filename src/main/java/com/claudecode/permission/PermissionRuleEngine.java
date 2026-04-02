@@ -50,6 +50,14 @@ public class PermissionRuleEngine {
             return PermissionDecision.allow("Bypass mode enabled");
         }
 
+        // PLAN 模式：仅允许只读工具
+        if (mode == PermissionMode.PLAN) {
+            if (isReadOnly || READ_ONLY_TOOLS.contains(toolName)) {
+                return PermissionDecision.allow("Read-only tool allowed in plan mode");
+            }
+            return PermissionDecision.deny("Plan mode: execution disabled (analysis only)");
+        }
+
         // 获取命令内容（用于 Bash/PowerShell 的命令匹配）
         String command = extractCommand(toolName, input);
 

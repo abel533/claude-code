@@ -25,7 +25,9 @@ public final class PermissionTypes {
         /** 跳过所有权限检查（不安全） */
         BYPASS,
         /** 自动拒绝而非询问用户（无头模式） */
-        DONT_ASK
+        DONT_ASK,
+        /** 计划模式：仅分析不执行（拒绝所有非只读工具） */
+        PLAN
     }
 
     /**
