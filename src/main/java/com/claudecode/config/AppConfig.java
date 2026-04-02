@@ -9,7 +9,10 @@ import com.claudecode.context.SystemPromptBuilder;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.core.TaskManager;
 import com.claudecode.core.TokenTracker;
+import com.claudecode.core.compact.AutoCompactManager;
 import com.claudecode.mcp.McpManager;
+import com.claudecode.permission.PermissionRuleEngine;
+import com.claudecode.permission.PermissionSettings;
 import com.claudecode.plugin.OutputStylePlugin;
 import com.claudecode.plugin.PluginManager;
 import com.claudecode.repl.ReplSession;
@@ -115,7 +118,8 @@ public class AppConfig {
     }
 
     @Bean
-    public CommandRegistry commandRegistry(PluginManager pluginManager) {
+    public CommandRegistry commandRegistry(PluginManager pluginManager, PermissionSettings permissionSettings) {
+        ConfigCommand configCommand = new ConfigCommand(permissionSettings);
         CommandRegistry registry = new CommandRegistry();
         registry.registerAll(
                 // 基础命令
@@ -127,7 +131,7 @@ public class AppConfig {
                 new StatusCommand(),
                 new ContextCommand(),
                 new InitCommand(),
-                new ConfigCommand(),
+                configCommand,
                 new HistoryCommand(),
                 // P0 命令
                 new DiffCommand(),
@@ -193,6 +197,23 @@ public class AppConfig {
     }
 
     @Bean
+    public PermissionSettings permissionSettings() {
+        PermissionSettings settings = new PermissionSettings();
+        settings.load();
+        return settings;
+    }
+
+    @Bean
+    public PermissionRuleEngine permissionRuleEngine(PermissionSettings permissionSettings) {
+        return new PermissionRuleEngine(permissionSettings);
+    }
+
+    @Bean
+    public AutoCompactManager autoCompactManager(ChatModel activeChatModel, TokenTracker tokenTracker) {
+        return new AutoCompactManager(activeChatModel, tokenTracker);
+    }
+
+    @Bean
     public TokenTracker tokenTracker(ProviderInfo info) {
         TokenTracker tracker = new TokenTracker();
         tracker.setModel(info.model());
@@ -223,8 +244,13 @@ public class AppConfig {
     @Bean
     public AgentLoop agentLoop(ChatModel activeChatModel, ToolRegistry toolRegistry,
                                ToolContext toolContext, String systemPrompt, TokenTracker tokenTracker,
-                               PluginManager pluginManager) {
+                               PluginManager pluginManager, PermissionRuleEngine permissionRuleEngine,
+                               AutoCompactManager autoCompactManager) {
         AgentLoop mainLoop = new AgentLoop(activeChatModel, toolRegistry, toolContext, systemPrompt, tokenTracker);
+
+        // 注入权限引擎和自动压缩管理器
+        mainLoop.setPermissionEngine(permissionRuleEngine);
+        mainLoop.setAutoCompactManager(autoCompactManager);
 
         // 注册子 Agent 工厂
         toolContext.set(AgentTool.AGENT_FACTORY_KEY,

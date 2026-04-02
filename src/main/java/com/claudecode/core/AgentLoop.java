@@ -1,5 +1,9 @@
 package com.claudecode.core;
 
+import com.claudecode.core.compact.AutoCompactManager;
+import com.claudecode.permission.PermissionRuleEngine;
+import com.claudecode.permission.PermissionTypes.PermissionChoice;
+import com.claudecode.permission.PermissionTypes.PermissionDecision;
 import com.claudecode.tool.ToolCallbackAdapter;
 import com.claudecode.tool.ToolContext;
 import com.claudecode.tool.ToolRegistry;
@@ -52,6 +56,12 @@ public class AgentLoop {
     private final TokenTracker tokenTracker;
     private final HookManager hookManager;
 
+    /** 权限规则引擎（可选，为 null 时使用传统回调方式） */
+    private PermissionRuleEngine permissionEngine;
+
+    /** 自动压缩管理器（可选） */
+    private AutoCompactManager autoCompactManager;
+
     /** 消息历史 —— 自行管理，不依赖 Spring AI ChatMemory */
     private final List<Message> messageHistory = new ArrayList<>();
 
@@ -64,8 +74,8 @@ public class AgentLoop {
     /** 流式输出开始回调：通知 UI 停止 spinner */
     private Runnable onStreamStart;
 
-    /** 权限确认回调：危险操作前请求用户确认（返回 true 表示允许） */
-    private Function<PermissionRequest, Boolean> onPermissionRequest;
+    /** 权限确认回调：危险操作前请求用户确认（返回 PermissionChoice） */
+    private Function<PermissionRequest, PermissionChoice> onPermissionRequest;
 
     /** Thinking 内容回调：显示 AI 的思考过程 */
     private Consumer<String> onThinkingContent;
@@ -98,8 +108,20 @@ public class AgentLoop {
         this.onStreamStart = onStreamStart;
     }
 
-    public void setOnPermissionRequest(Function<PermissionRequest, Boolean> onPermissionRequest) {
+    public void setOnPermissionRequest(Function<PermissionRequest, PermissionChoice> onPermissionRequest) {
         this.onPermissionRequest = onPermissionRequest;
+    }
+
+    public void setPermissionEngine(PermissionRuleEngine engine) {
+        this.permissionEngine = engine;
+    }
+
+    public void setAutoCompactManager(AutoCompactManager manager) {
+        this.autoCompactManager = manager;
+    }
+
+    public AutoCompactManager getAutoCompactManager() {
+        return autoCompactManager;
     }
 
     public void setOnThinkingContent(Consumer<String> onThinkingContent) {
@@ -183,6 +205,14 @@ public class AgentLoop {
 
             // 执行工具调用
             executeToolCalls(result.assistant.getToolCalls(), callbacks);
+
+            // 自动压缩检查（在工具调用后，下次 API 调用前）
+            if (autoCompactManager != null) {
+                autoCompactManager.autoCompactIfNeeded(
+                        () -> messageHistory,
+                        this::replaceHistory
+                );
+            }
         }
 
         if (iteration >= MAX_ITERATIONS) {
@@ -302,12 +332,34 @@ public class AgentLoop {
             String result;
             ToolCallbackAdapter adapter = findCallbackByName(callbacks, toolName);
             if (adapter != null) {
-                // 权限确认：非只读工具需要用户确认
+                // 权限检查：优先使用规则引擎，回退到传统回调
                 boolean permitted = true;
-                if (!adapter.getTool().isReadOnly() && onPermissionRequest != null) {
+                if (permissionEngine != null) {
+                    PermissionDecision decision = permissionEngine.evaluate(
+                            toolName, parsedArgs, adapter.getTool().isReadOnly());
+                    if (decision.isAllowed()) {
+                        permitted = true;
+                    } else if (decision.isDenied()) {
+                        permitted = false;
+                        log.info("[{}] Denied by rule: {}", toolName, decision.reason());
+                    } else if (decision.needsAsk() && onPermissionRequest != null) {
+                        String activity = adapter.getTool().activityDescription(parsedArgs);
+                        PermissionRequest req = new PermissionRequest(toolName, toolArgs, activity);
+                        req.setDecision(decision);
+                        PermissionChoice choice = onPermissionRequest.apply(req);
+                        permitted = (choice == PermissionChoice.ALLOW_ONCE || choice == PermissionChoice.ALWAYS_ALLOW);
+                        // 持久化用户选择
+                        String command = parsedArgs != null ? (String) parsedArgs.get("command") : null;
+                        permissionEngine.applyChoice(choice, toolName, command);
+                    } else {
+                        permitted = false;
+                    }
+                } else if (!adapter.getTool().isReadOnly() && onPermissionRequest != null) {
+                    // 传统回调模式（向后兼容）
                     String activity = adapter.getTool().activityDescription(parsedArgs);
                     PermissionRequest req = new PermissionRequest(toolName, toolArgs, activity);
-                    permitted = onPermissionRequest.apply(req);
+                    PermissionChoice choice = onPermissionRequest.apply(req);
+                    permitted = (choice == PermissionChoice.ALLOW_ONCE || choice == PermissionChoice.ALWAYS_ALLOW);
                 }
 
                 if (permitted) {
@@ -438,7 +490,24 @@ public class AgentLoop {
     }
 
     /** 权限确认请求 */
-    public record PermissionRequest(String toolName, String arguments, String activityDescription) {}
+    public static class PermissionRequest {
+        private final String toolName;
+        private final String arguments;
+        private final String activityDescription;
+        private PermissionDecision decision;
+
+        public PermissionRequest(String toolName, String arguments, String activityDescription) {
+            this.toolName = toolName;
+            this.arguments = arguments;
+            this.activityDescription = activityDescription;
+        }
+
+        public String toolName() { return toolName; }
+        public String arguments() { return arguments; }
+        public String activityDescription() { return activityDescription; }
+        public PermissionDecision decision() { return decision; }
+        public void setDecision(PermissionDecision decision) { this.decision = decision; }
+    }
 
     /** 工具事件，用于 UI 展示 */
     public record ToolEvent(String toolName, Phase phase, String arguments, String result) {

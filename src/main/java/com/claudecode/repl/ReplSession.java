@@ -6,6 +6,9 @@ import com.claudecode.command.CommandRegistry;
 import com.claudecode.console.*;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.core.ConversationPersistence;
+import com.claudecode.permission.DangerousPatterns;
+import com.claudecode.permission.PermissionTypes.PermissionChoice;
+import com.claudecode.permission.PermissionTypes.PermissionDecision;
 import com.claudecode.tool.ToolRegistry;
 import com.claudecode.tool.impl.AskUserQuestionTool;
 import org.jline.reader.*;
@@ -430,11 +433,21 @@ public class ReplSession {
 
     /**
      * 显示权限确认提示并等待用户输入。
-     * 用于危险操作（文件写入、bash 执行等）前的安全确认。
+     * 支持 4 种选项：Y(允许一次) / A(始终允许) / N(拒绝) / D(始终拒绝)。
      */
-    private boolean promptPermission(AgentLoop.PermissionRequest request) {
+    private PermissionChoice promptPermission(AgentLoop.PermissionRequest request) {
         out.println();
-        out.println(AnsiStyle.yellow("  ⚠ Permission Required"));
+
+        // 检查是否为危险命令
+        PermissionDecision decision = request.decision();
+        boolean isDangerous = (decision != null && decision.reason() != null
+                && decision.reason().startsWith("⚠ DANGEROUS"));
+
+        if (isDangerous) {
+            out.println(AnsiStyle.red("  ⚠ DANGEROUS Operation"));
+        } else {
+            out.println(AnsiStyle.yellow("  ⚠ Permission Required"));
+        }
         out.println("  " + "─".repeat(50));
         out.println("  " + AnsiStyle.bold("Tool: ") + AnsiStyle.cyan(request.toolName()));
         out.println("  " + AnsiStyle.bold("Action: ") + request.activityDescription());
@@ -448,30 +461,46 @@ public class ReplSession {
             out.println("  " + AnsiStyle.dim("Args: " + argsPreview));
         }
 
+        // 显示建议规则
+        String suggestedRule = null;
+        if (decision != null && decision.commandPrefix() != null) {
+            suggestedRule = request.toolName() + "(" + decision.commandPrefix() + ":*)";
+        }
+
         out.println("  " + "─".repeat(50));
-        out.print("  " + AnsiStyle.bold("Allow execution?") + AnsiStyle.dim(" [Y/n/always] ") + AnsiStyle.BOLD + AnsiStyle.BRIGHT_CYAN + "→ " + AnsiStyle.RESET);
+        out.println("  " + AnsiStyle.green("[Y]") + " Allow once");
+        if (suggestedRule != null && !isDangerous) {
+            out.println("  " + AnsiStyle.green("[A]") + " Always allow " + AnsiStyle.cyan(suggestedRule));
+        }
+        out.println("  " + AnsiStyle.red("[N]") + " Deny");
+        if (suggestedRule != null) {
+            out.println("  " + AnsiStyle.red("[D]") + " Always deny this pattern");
+        }
+        out.print("  " + AnsiStyle.bold("Choice") + AnsiStyle.dim(" [Y/a/n/d] ") + AnsiStyle.BOLD + AnsiStyle.BRIGHT_CYAN + "→ " + AnsiStyle.RESET);
         out.flush();
 
         String answer = readLineForPermission();
-        if (answer == null) return false;
+        if (answer == null) return PermissionChoice.DENY_ONCE;
 
         answer = answer.strip().toLowerCase();
 
-        // "always" → 禁用后续权限确认
-        if (answer.equals("always") || answer.equals("a")) {
-            agentLoop.setOnPermissionRequest(null); // 移除权限回调
-            out.println(AnsiStyle.green("  ✓ All subsequent operations authorized"));
-            return true;
-        }
-
-        // 空字符串或 y/yes → 允许
-        if (answer.isEmpty() || answer.equals("y") || answer.equals("yes")) {
-            return true;
-        }
-
-        // 其他输入 → 拒绝
-        out.println(AnsiStyle.red("  ✗ Operation denied"));
-        return false;
+        return switch (answer) {
+            case "a", "always" -> {
+                out.println(AnsiStyle.green("  ✓ Rule saved: always allow " +
+                        (suggestedRule != null ? suggestedRule : request.toolName())));
+                yield PermissionChoice.ALWAYS_ALLOW;
+            }
+            case "d" -> {
+                out.println(AnsiStyle.red("  ✗ Rule saved: always deny " +
+                        (suggestedRule != null ? suggestedRule : request.toolName())));
+                yield PermissionChoice.ALWAYS_DENY;
+            }
+            case "n", "no" -> {
+                out.println(AnsiStyle.red("  ✗ Operation denied"));
+                yield PermissionChoice.DENY_ONCE;
+            }
+            default -> PermissionChoice.ALLOW_ONCE; // 空字符串、y、yes → 允许
+        };
     }
 
     /** 读取权限确认的用户输入（兼容 JLine 和 Scanner 模式） */

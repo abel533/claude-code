@@ -84,9 +84,24 @@ public class StatusLine {
         // 模型名
         sb.append(" ").append(modelName);
 
-        // Token 用量
+        // Token 用量 + 上下文窗口占比
         sb.append("  │  ↑").append(TokenTracker.formatTokens(inputTokens));
         sb.append(" ↓").append(TokenTracker.formatTokens(outputTokens));
+
+        // 上下文窗口使用百分比（带颜色）
+        double usagePct = tokenTracker.getUsagePercentage();
+        if (usagePct > 0) {
+            String pctStr = String.format(" %.0f%%", usagePct * 100);
+            var warningState = tokenTracker.getTokenWarningState();
+            sb.append(AnsiStyle.RESET); // 先重置再着色
+            sb.append(switch (warningState) {
+                case NORMAL -> AnsiStyle.DIM + AnsiStyle.GREEN + pctStr;
+                case WARNING -> AnsiStyle.BOLD + AnsiStyle.YELLOW + pctStr;
+                case ERROR -> AnsiStyle.BOLD + AnsiStyle.RED + pctStr;
+                case BLOCKING -> AnsiStyle.BOLD + AnsiStyle.RED + "⚠" + pctStr;
+            });
+            sb.append(AnsiStyle.RESET).append(AnsiStyle.DIM);
+        }
 
         // 费用
         if (cost > 0) {

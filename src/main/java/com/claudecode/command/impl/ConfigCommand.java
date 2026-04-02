@@ -3,6 +3,9 @@ package com.claudecode.command.impl;
 import com.claudecode.command.CommandContext;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
+import com.claudecode.permission.PermissionRuleEngine;
+import com.claudecode.permission.PermissionSettings;
+import com.claudecode.permission.PermissionTypes.PermissionMode;
 
 import java.util.List;
 import java.util.Map;
@@ -10,8 +13,7 @@ import java.util.Map;
 /**
  * /config 命令 —— 查看和设置应用配置。
  * <p>
- * 支持查看当前配置、设置单个配置项。
- * 配置变更仅在当前会话内生效。
+ * 支持查看当前配置、设置单个配置项，以及权限管理子命令。
  */
 public class ConfigCommand implements SlashCommand {
 
@@ -21,8 +23,23 @@ public class ConfigCommand implements SlashCommand {
             "max-tokens", "Maximum output tokens per response",
             "temperature", "Response randomness (0.0-1.0)",
             "verbose", "Enable verbose logging (true/false)",
-            "auto-compact", "Auto compact when context is large (true/false)"
+            "auto-compact", "Auto compact when context is large (true/false)",
+            "permission-mode", "Permission mode: default/accept-edits/bypass/dont-ask",
+            "permission-list", "List all saved permission rules",
+            "permission-reset", "Clear all permission rules"
     );
+
+    private PermissionSettings permissionSettings;
+
+    public ConfigCommand() {}
+
+    public ConfigCommand(PermissionSettings permissionSettings) {
+        this.permissionSettings = permissionSettings;
+    }
+
+    public void setPermissionSettings(PermissionSettings settings) {
+        this.permissionSettings = settings;
+    }
 
     @Override
     public String name() {
@@ -90,17 +107,6 @@ public class ConfigCommand implements SlashCommand {
         return sb.toString();
     }
 
-    private String showConfig(String key, CommandContext context) {
-        if (!CONFIG_KEYS.containsKey(key)) {
-            return AnsiStyle.yellow("  ⚠ Unknown config key: " + key) + "\n"
-                    + AnsiStyle.dim("  Available: " + String.join(", ", CONFIG_KEYS.keySet()));
-        }
-
-        String desc = CONFIG_KEYS.get(key);
-        return "  " + AnsiStyle.bold(key) + ": " + AnsiStyle.dim(desc) + "\n"
-                + AnsiStyle.dim("  Set with: /config " + key + " <value>");
-    }
-
     private String setConfig(String key, String value, CommandContext context) {
         return switch (key) {
             case "model" -> {
@@ -112,6 +118,9 @@ public class ConfigCommand implements SlashCommand {
                 boolean verbose = Boolean.parseBoolean(value);
                 yield AnsiStyle.green("  ✅ Verbose mode: " + (verbose ? "ON" : "OFF"));
             }
+            case "permission-mode" -> setPermissionMode(value);
+            case "permission-list" -> listPermissionRules();
+            case "permission-reset" -> resetPermissionRules();
             default -> {
                 if (!CONFIG_KEYS.containsKey(key)) {
                     yield AnsiStyle.yellow("  ⚠ Unknown config key: " + key);
@@ -120,5 +129,70 @@ public class ConfigCommand implements SlashCommand {
                         + AnsiStyle.dim("  Set via application.yml or environment variables");
             }
         };
+    }
+
+    private String showConfig(String key, CommandContext context) {
+        // 无参数的权限子命令
+        if (key.equals("permission-list")) return listPermissionRules();
+        if (key.equals("permission-reset")) return resetPermissionRules();
+
+        if (!CONFIG_KEYS.containsKey(key)) {
+            return AnsiStyle.yellow("  ⚠ Unknown config key: " + key) + "\n"
+                    + AnsiStyle.dim("  Available: " + String.join(", ", CONFIG_KEYS.keySet()));
+        }
+
+        String desc = CONFIG_KEYS.get(key);
+        return "  " + AnsiStyle.bold(key) + ": " + AnsiStyle.dim(desc) + "\n"
+                + AnsiStyle.dim("  Set with: /config " + key + " <value>");
+    }
+
+    // ── 权限管理子命令 ──
+
+    private String setPermissionMode(String value) {
+        if (permissionSettings == null) {
+            return AnsiStyle.yellow("  ⚠ Permission settings not initialized");
+        }
+        try {
+            PermissionMode mode = switch (value.toLowerCase()) {
+                case "default" -> PermissionMode.DEFAULT;
+                case "accept-edits", "acceptedits" -> PermissionMode.ACCEPT_EDITS;
+                case "bypass" -> PermissionMode.BYPASS;
+                case "dont-ask", "dontask" -> PermissionMode.DONT_ASK;
+                default -> throw new IllegalArgumentException(value);
+            };
+            permissionSettings.setCurrentMode(mode);
+            return AnsiStyle.green("  ✅ Permission mode set to: " + mode);
+        } catch (IllegalArgumentException e) {
+            return AnsiStyle.yellow("  ⚠ Unknown mode: " + value) + "\n"
+                    + AnsiStyle.dim("  Available: default, accept-edits, bypass, dont-ask");
+        }
+    }
+
+    private String listPermissionRules() {
+        if (permissionSettings == null) {
+            return AnsiStyle.yellow("  ⚠ Permission settings not initialized");
+        }
+        var rules = permissionSettings.listRules();
+        if (rules.isEmpty()) {
+            return AnsiStyle.dim("  No saved permission rules") + "\n"
+                    + AnsiStyle.dim("  Mode: " + permissionSettings.getCurrentMode());
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n");
+        sb.append(AnsiStyle.bold("  🔒 Permission Rules")).append("\n");
+        sb.append("  ").append("─".repeat(40)).append("\n");
+        sb.append("  ").append(AnsiStyle.bold("Mode: ")).append(permissionSettings.getCurrentMode()).append("\n\n");
+        for (String rule : rules) {
+            sb.append("  ").append(rule).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private String resetPermissionRules() {
+        if (permissionSettings == null) {
+            return AnsiStyle.yellow("  ⚠ Permission settings not initialized");
+        }
+        permissionSettings.clearAll();
+        return AnsiStyle.green("  ✅ All permission rules cleared");
     }
 }
