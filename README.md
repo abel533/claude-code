@@ -1,3 +1,13 @@
+> **📌 仓库分支说明**
+>
+> 本仓库包含三个独立分支，围绕 Claude Code 展开不同维度的工作：
+>
+> | 分支 | 说明 |
+> |------|------|
+> | [`main`](../../tree/main) | **Claude Code Java** — 使用 Java + Spring AI 重写的 Claude Code CLI AI 编码助手 |
+> | [`claude`](../../tree/claude) | **Claude Code 源码** — Claude Code TypeScript 源码快照，用于安全研究和架构学习 |
+> | [`learn`](../../tree/learn) | **Learn Claude Code** — 拆解 Claude Code Agent Harness 架构的教学项目，含 12 节渐进式课程（当前分支） |
+
 # Learn Claude Code -- 真正的 Agent Harness 工程
 
 [English](./README-en.md) | [中文](./README.md) | [日本語](./README-ja.md)
