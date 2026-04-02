@@ -2,6 +2,10 @@
 target/
 *.class
 
+# Distribution
+dist/
+dist2/
+
 # IDE
 .idea/
 *.iml

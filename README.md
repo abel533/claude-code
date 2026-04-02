@@ -57,6 +57,8 @@
 
 ## 🚀 快速开始
 
+> 📖 完整的构建、安装、跨平台使用说明请参阅 **[BUILD.md](BUILD.md)**
+
 ### 前置要求
 
 - **JDK 25**（配置 `JAVA_HOME`）
@@ -90,19 +92,20 @@ export AI_MODEL="gpt-4o"
 
 ### 运行
 
-**Windows PowerShell：**
-```powershell
-.\run.ps1
-```
-
-**Windows CMD：**
-```cmd
-run.bat
-```
-
-**手动运行：**
+**构建发行版后运行：**
 ```bash
-cd claude-code-copy
+# 1. 构建发行包（仅需一次）
+.\packaging\build-dist.ps1 -JavaHome "C:\Dev\jdk-25.0.2"  # Windows
+# 或
+JAVA_HOME=/path/to/jdk-25 ./packaging/build-dist.sh        # Linux/macOS
+
+# 2. 运行
+dist\bin\claude-code.cmd      # Windows
+dist/bin/claude-code           # Linux/macOS
+```
+
+**开发模式运行：**
+```bash
 mvn spring-boot:run
 ```
 
@@ -589,11 +592,50 @@ mvn clean package -DskipTests
 java -jar target/claude-code-java-0.1.0-SNAPSHOT.jar
 ```
 
+### 发行版构建（jlink 最小 JRE）
+
+创建包含精简 JRE 的独立发行包，无需目标机器安装 JDK：
+
+**Windows (PowerShell)：**
+```powershell
+.\packaging\build-dist.ps1 -JavaHome "C:\Dev\jdk-25.0.2"
+```
+
+**Linux / macOS (Bash)：**
+```bash
+JAVA_HOME=/path/to/jdk-25 ./packaging/build-dist.sh
+```
+
+生成的 `dist/` 目录结构：
+```
+dist/
+├── bin/
+│   ├── claude-code          # Unix 启动脚本
+│   └── claude-code.cmd      # Windows 启动脚本
+├── lib/
+│   └── claude-code-java.jar # Spring Boot fat jar (~71 MB)
+└── runtime/                 # jlink 精简 JRE (~49 MB)
+    └── ...
+```
+
+使用方式：
+```bash
+# 将 bin/ 加入 PATH
+export PATH="/path/to/dist/bin:$PATH"    # Linux/macOS
+set PATH=C:\path\to\dist\bin;%PATH%      # Windows
+
+# 设置 API Key 后即可使用
+export AI_API_KEY=your-key
+claude-code
+```
+
+> 💡 发行包约 120 MB，比完整 JDK（~350 MB）小得多。每个平台需要独立构建（jlink JRE 是平台相关的）。
+
 ### 已知问题
 
-- **Windows 编码**：需要 `chcp 65001` 切换到 UTF-8 编码页（启动脚本已自动处理）
+- **Windows 编码**：需要 `chcp 65001` 切换到 UTF-8 编码页（发行版启动脚本已自动处理）
 - **IDE 终端**：IntelliJ IDEA 等 IDE 内置终端为 dumb 模式，Tab 补全和行编辑受限
-- **JDK 25 警告**：Maven 的 jansi/guava 会触发 native access 警告（启动脚本已通过 MAVEN_OPTS 抑制）
+- **JDK 25 警告**：Maven 的 jansi/guava 会触发 native access 警告（启动脚本已通过 JVM 参数抑制）
 
 ## 📝 对应关系
 
