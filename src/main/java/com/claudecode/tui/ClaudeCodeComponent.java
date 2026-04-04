@@ -102,7 +102,10 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
     /** Ctrl+C 双击退出：上次按下时间 */
     private volatile long lastCtrlCTime = 0;
-    private static final long CTRL_C_EXIT_WINDOW_MS = 2000; // 2秒内再按一次退出
+    private static final long CTRL_C_EXIT_WINDOW_MS = 800; // 800ms内再按一次退出（匹配官方）
+
+    /** Thinking 开始时间（用于显示耗时） */
+    private volatile long thinkingStartTime = 0;
 
     /** 首次用户输入回调（用于 conversation summary） */
     private Consumer<String> onFirstUserInput;
@@ -301,21 +304,28 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         // Thinking / Processing 状态动画（显示在消息区底部）
         if (agentRunning.get()) {
             String spinner = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length];
-            if (s.thinking && !s.thinkingText.isEmpty()) {
+            if (s.thinking) {
+                // 计算 thinking 耗时
+                long elapsed = thinkingStartTime > 0
+                        ? (System.currentTimeMillis() - thinkingStartTime) / 1000
+                        : 0;
+                String durationText = elapsed >= 2
+                        ? String.format("Thinking (%ds)...", elapsed)
+                        : "Thinking...";
                 allItems.add(Text.of(
                         Text.of(spinner + " ").color(Color.BRIGHT_YELLOW),
-                        Text.of("Thinking...").color(Color.BRIGHT_YELLOW).italic()
-                ));
-            } else if (s.thinking) {
-                allItems.add(Text.of(
-                        Text.of(spinner + " ").color(Color.BRIGHT_YELLOW),
-                        Text.of("Thinking...").color(Color.BRIGHT_YELLOW).italic()
+                        Text.of(durationText).color(Color.BRIGHT_YELLOW).italic()
                 ));
             } else {
-                // Agent 运行中但未进入 thinking（如执行工具、准备调用等）
+                // Agent 运行中但未进入 thinking（执行工具、流式输出等）
+                // 显示输出 token 计数
+                String tokenInfo = "";
+                if (tokenTracker != null && tokenTracker.getOutputTokens() > 0) {
+                    tokenInfo = " (" + tokenTracker.getOutputTokens() + " tokens)";
+                }
                 allItems.add(Text.of(
                         Text.of(spinner + " ").color(Color.BRIGHT_CYAN),
-                        Text.of("Processing...").color(Color.BRIGHT_CYAN).italic()
+                        Text.of("Processing..." + tokenInfo).color(Color.BRIGHT_CYAN).italic()
                 ));
             }
         }
@@ -630,6 +640,12 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 return;
             }
 
+            // Ctrl+L: 强制重绘
+            if (key.ctrl() && "l".equals(input)) {
+                setState(new TuiState(s.inputText, s.messages, s.scrollOffset, s.thinking, s.thinkingText));
+                return;
+            }
+
             // Ctrl+C: 中断 Agent 或双击退出
             if (key.ctrl() && "c".equals(input)) {
                 if (agentRunning.get()) {
@@ -708,6 +724,12 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 scroll(s, 3);
             } else if (key.scrollDown()) {
                 scroll(s, -3);
+            } else if (key.ctrl() && key.home()) {
+                // Ctrl+Home: 跳到顶部
+                scrollToTop(s);
+            } else if (key.ctrl() && key.end()) {
+                // Ctrl+End: 跳到底部
+                scrollToBottom(s);
             } else if (key.pageUp()) {
                 scroll(s, 10);
             } else if (key.pageDown()) {
@@ -876,6 +898,8 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     private void handleScrollInput(Key key, TuiState s) {
         if (key.scrollUp()) scroll(s, 3);
         else if (key.scrollDown()) scroll(s, -3);
+        else if (key.ctrl() && key.home()) scrollToTop(s);
+        else if (key.ctrl() && key.end()) scrollToBottom(s);
         else if (key.pageUp()) scroll(s, 10);
         else if (key.pageDown()) scroll(s, -10);
     }
@@ -1110,6 +1134,11 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
     /** 设置 thinking 状态 */
     public void setThinking(boolean thinking, String text) {
+        if (thinking && thinkingStartTime == 0) {
+            thinkingStartTime = System.currentTimeMillis();
+        } else if (!thinking) {
+            thinkingStartTime = 0;
+        }
         synchronized (stateLock) {
             TuiState s = getState();
             setState(new TuiState(s.inputText, s.messages, s.scrollOffset, thinking, text));
@@ -1162,6 +1191,15 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         int maxOffset = Math.max(0, totalItems - visibleLines);
         int newOffset = Math.max(0, Math.min(s.scrollOffset + delta, maxOffset));
         setState(new TuiState(s.inputText, s.messages, newOffset, s.thinking, s.thinkingText));
+    }
+
+    private void scrollToTop(TuiState s) {
+        int maxOffset = Math.max(0, lastRenderedItemCount - lastMaxVisibleLines);
+        setState(new TuiState(s.inputText, s.messages, maxOffset, s.thinking, s.thinkingText));
+    }
+
+    private void scrollToBottom(TuiState s) {
+        setState(new TuiState(s.inputText, s.messages, 0, s.thinking, s.thinkingText));
     }
 
     // ==================== 工具方法 ====================
