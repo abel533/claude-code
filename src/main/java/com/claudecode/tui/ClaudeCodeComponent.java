@@ -211,21 +211,12 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             setCursorPosition(cursorRow, cursorCol);
         }
 
-        int headerHeight = 8; // 6 content rows + 2 border lines
         int bottomHeight = 4 + inputLineCount;
         int messagePaddingTop = 1;
-        int maxMessageLines = Math.max(1, h - headerHeight - bottomHeight - messagePaddingTop);
-
-        // 终端高度太小时，隐藏标题框以腾出消息空间
-        boolean showHeader = h >= 20;
-        if (!showHeader) {
-            maxMessageLines = Math.max(1, h - bottomHeight - messagePaddingTop);
-        }
+        // 标题框现在是消息区的一部分，会随消息一起滚动（匹配官方 LogoHeader 行为）
+        int maxMessageLines = Math.max(1, h - bottomHeight - messagePaddingTop);
 
         List<Renderable> layout = new ArrayList<>();
-        if (showHeader) {
-            layout.add(headerBox(w));
-        }
         layout.add(messagesArea(s, maxMessageLines));
         layout.add(Spacer.create());
         layout.add(statusBar(w, h));
@@ -238,8 +229,8 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 .flexDirection(FlexDirection.COLUMN).width(w).height(h);
     }
 
-    /** 标题框 — 保留原始 ASCII Logo 样式（双列布局） */
-    private Renderable headerBox(int w) {
+    /** 标题框行列表 — ASCII Logo + 信息（作为消息区首部随消息滚动） */
+    private List<Renderable> headerLines() {
         // ASCII 冒烟咖啡杯
         String[] logo = {
                 "       ) ) )       ",
@@ -250,8 +241,6 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 "    ╰─┬────┬─╯     "
         };
         int logoWidth = 19;
-        int sepWidth = 3; // " │ "
-        int rightWidth = Math.max(0, w - 4 - logoWidth - sepWidth - 2);
 
         // 构建右侧信息行（带颜色高亮）
         @SuppressWarnings("unchecked")
@@ -293,18 +282,16 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                     rightPart
             ));
         }
-
-        return Box.of(rows.toArray(new Renderable[0]))
-                .flexDirection(FlexDirection.COLUMN)
-                .borderStyle(BorderStyle.ROUND)
-                .borderColor(Color.BRIGHT_MAGENTA)
-                .paddingX(1)
-                .width(w);
+        return rows;
     }
 
     /** 消息列表（带虚拟滚动） */
     private Renderable messagesArea(TuiState s, int maxLines) {
         List<Renderable> allItems = new ArrayList<>();
+
+        // 标题框内容（作为消息区首部，随消息一起滚动 — 匹配官方 LogoHeader 行为）
+        allItems.addAll(headerLines());
+        allItems.add(Text.of(" ")); // 空行分隔
 
         // 初始提示消息
         allItems.add(Text.of(
@@ -1219,8 +1206,12 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     private void addMessageInternal(UIMessage msg, TuiState s) {
         List<UIMessage> newMsgs = new ArrayList<>(s.messages);
         newMsgs.add(msg);
+        // 匹配官方 sticky-scroll 行为：
+        // - 用户在底部（scrollOffset=0）→ 新消息保持在底部
+        // - 用户已上滚（scrollOffset>0）→ 保持当前位置，不自动跳到底部
+        int newOffset = s.scrollOffset;
         setState(new TuiState(s.inputText, Collections.unmodifiableList(newMsgs),
-                0, s.thinking, s.thinkingText));
+                newOffset, s.thinking, s.thinkingText));
     }
 
     /** 追加 token 到当前流式助手消息 */
@@ -1503,15 +1494,18 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     /**
      * 设置终端标题（OSC 0 escape sequence）。
      * 匹配官方 Claude Code 的 useTerminalTitle hook 行为。
-     * Windows 使用 ANSI OSC 0，兼容 Windows Terminal / ConEmu 等现代终端。
+     * 必须绕过 jink 的 ConsolePatcher（它会拦截 System.out/err），
+     * 直接写入原始输出流。
      */
     private static void setTerminalTitle(String title) {
         if (title == null || title.isBlank()) return;
         try {
+            // 绕过 ConsolePatcher 拦截，直接写入终端
+            PrintStream raw = io.mybatis.jink.util.ConsolePatcher.getOriginalOut();
             // OSC 0: Set window title and icon name
             // Format: ESC ] 0 ; <title> BEL
-            System.err.print("\033]0;" + title + "\007");
-            System.err.flush();
+            raw.print("\033]0;" + title + "\007");
+            raw.flush();
         } catch (Exception ignored) {}
     }
 
