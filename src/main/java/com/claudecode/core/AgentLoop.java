@@ -66,6 +66,9 @@ public class AgentLoop {
     /** 拒绝追踪器 */
     private final DenialTracker denialTracker = new DenialTracker();
 
+    /** 中断标志 —— 用于取消当前运行中的 Agent 循环 */
+    private volatile boolean cancelled = false;
+
     /** 消息历史 —— 自行管理，不依赖 Spring AI ChatMemory */
     private final List<Message> messageHistory = new ArrayList<>();
 
@@ -132,6 +135,16 @@ public class AgentLoop {
         this.onThinkingContent = onThinkingContent;
     }
 
+    /** 取消当前运行中的 Agent 循环 */
+    public void cancel() {
+        cancelled = true;
+    }
+
+    /** 重置取消标志（每次新的循环开始时调用） */
+    private void resetCancel() {
+        cancelled = false;
+    }
+
     // ==================== 阻塞模式 ====================
 
     /**
@@ -161,6 +174,7 @@ public class AgentLoop {
     // ==================== 核心循环（统一阻塞/流式） ====================
 
     private String executeLoop(boolean streaming, Consumer<String> onToken) {
+        resetCancel();
         List<ToolCallback> callbacks = toolRegistry.toCallbacks(toolContext);
         ChatOptions options = ToolCallingChatOptions.builder()
                 .toolCallbacks(callbacks)
@@ -171,6 +185,13 @@ public class AgentLoop {
         String lastAssistantText = "";
 
         while (iteration < MAX_ITERATIONS) {
+            // 检查取消标志
+            if (cancelled) {
+                log.info("Agent loop cancelled by user at iteration {}", iteration);
+                lastAssistantText += "\n\n[Interrupted by user]";
+                break;
+            }
+
             iteration++;
             log.debug("Agent loop iteration {} ({})", iteration, streaming ? "streaming" : "blocking");
 
@@ -182,6 +203,12 @@ public class AgentLoop {
                 result = streamIteration(prompt, onToken);
             } else {
                 result = blockingIteration(prompt);
+            }
+
+            // 检查取消标志（API调用后）
+            if (cancelled) {
+                log.info("Agent loop cancelled by user after API call at iteration {}", iteration);
+                break;
             }
 
             // 记录 Token 使用量

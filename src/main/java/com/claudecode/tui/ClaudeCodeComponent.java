@@ -508,7 +508,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         }
 
         return Box.of(
-                Text.of("↑↓ history  wheel scroll  Ctrl+D exit").dimmed(),
+                Text.of("↑↓ history  Esc interrupt  Ctrl+D exit").dimmed(),
                 Spacer.create(),
                 Text.of(tokenInfo).color(Color.BRIGHT_GREEN)
         ).paddingX(1).height(1);
@@ -536,7 +536,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             // Ctrl+C: 取消当前输入或中断 Agent
             if (key.ctrl() && "c".equals(input)) {
                 if (agentRunning.get()) {
-                    // TODO: 中断 Agent 运行
+                    agentLoop.cancel();
                     addMessageInternal(new SystemMsg("^C (interrupt)", Color.BRIGHT_YELLOW), s);
                 } else {
                     setState(new TuiState("", s.messages, s.scrollOffset, false, ""));
@@ -554,9 +554,15 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 return;
             }
 
-            // AI 运行中时忽略大部分输入（但允许滚动）
+            // AI 运行中时允许滚动和 Escape 中断
             if (agentRunning.get()) {
-                handleScrollInput(key, s);
+                if (key.escape()) {
+                    // Esc: 中断 Agent 运行
+                    agentLoop.cancel();
+                    addMessageInternal(new SystemMsg("⚡ Interrupted", Color.BRIGHT_YELLOW), s);
+                } else {
+                    handleScrollInput(key, s);
+                }
                 return;
             }
 
