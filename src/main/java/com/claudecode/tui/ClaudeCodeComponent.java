@@ -87,6 +87,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     private volatile Thread spinnerThread;
     /** 终端标题（从首条用户消息推断） */
     private volatile String sessionTitle = null;
+    private volatile boolean titleInitialized = false;
 
     /** 权限确认回调（由权限请求设置，用户输入后调用） */
     private volatile Consumer<String> permissionCallback;
@@ -142,14 +143,18 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         this.toolCount = toolCount;
         this.tokenTracker = tokenTracker;
         this.onExit = onExit;
-        // 设置初始终端标题（匹配官方 process.title = 'claude'）
-        setTerminalTitle(TITLE_STATIC_PREFIX + " Claude Code");
+        // 注意：终端标题在 jink 初始化后设置（constructor 阶段太早，ConsolePatcher 未就绪）
     }
 
     // ==================== 渲染 ====================
 
     @Override
     public Renderable render() {
+        // 首次渲染时设置终端标题（此时 jink 已初始化，ConsolePatcher 已就绪）
+        if (!titleInitialized) {
+            titleInitialized = true;
+            setTerminalTitle(TITLE_STATIC_PREFIX + " Claude Code");
+        }
         TuiState s = getState();
         int w = getColumns();
         int h = getRows();
@@ -229,8 +234,8 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 .flexDirection(FlexDirection.COLUMN).width(w).height(h);
     }
 
-    /** 标题框行列表 — ASCII Logo + 信息（作为消息区首部随消息滚动） */
-    private List<Renderable> headerLines() {
+    /** 标题框 — ASCII Logo + 信息（作为消息区首项，随消息滚动） */
+    private Renderable headerBox(int w) {
         // ASCII 冒烟咖啡杯
         String[] logo = {
                 "       ) ) )       ",
@@ -282,15 +287,23 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                     rightPart
             ));
         }
-        return rows;
+
+        return Box.of(rows.toArray(new Renderable[0]))
+                .flexDirection(FlexDirection.COLUMN)
+                .borderStyle(BorderStyle.ROUND)
+                .borderColor(Color.BRIGHT_MAGENTA)
+                .paddingX(1)
+                .width(w);
     }
 
     /** 消息列表（带虚拟滚动） */
     private Renderable messagesArea(TuiState s, int maxLines) {
+        int w = getColumns();
         List<Renderable> allItems = new ArrayList<>();
 
-        // 标题框内容（作为消息区首部，随消息一起滚动 — 匹配官方 LogoHeader 行为）
-        allItems.addAll(headerLines());
+        // 标题框（作为消息区首项，随消息一起滚动 — 匹配官方 LogoHeader 行为）
+        // 注意：Box with border 算作1个虚拟滚动单位，实际占约8行
+        allItems.add(headerBox(w));
         allItems.add(Text.of(" ")); // 空行分隔
 
         // 初始提示消息
