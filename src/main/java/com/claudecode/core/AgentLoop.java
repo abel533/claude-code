@@ -295,7 +295,7 @@ public class AgentLoop {
 
                 // 实时输出文本 token
                 String text = output.getText();
-                if (text != null && !text.isEmpty()) {
+                if (text != null && !text.isEmpty() && !cancelled) {
                     // 第一个 token 到达时通知 UI（停止 spinner）
                     if (firstToken[0]) {
                         firstToken[0] = false;
@@ -338,6 +338,13 @@ public class AgentLoop {
         List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
 
         for (AssistantMessage.ToolCall toolCall : toolCalls) {
+            // 检查取消标志
+            if (cancelled) {
+                toolResponses.add(new ToolResponseMessage.ToolResponse(
+                        toolCall.id(), toolCall.name(), "Cancelled by user"));
+                continue;
+            }
+
             String toolName = toolCall.name();
             String toolArgs = toolCall.arguments();
             String callId = toolCall.id();
