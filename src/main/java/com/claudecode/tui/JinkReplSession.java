@@ -96,6 +96,9 @@ public class JinkReplSession {
         // 启动 jink 渲染
         inkApp = Ink.render(component);
 
+        // 拦截 System.out/err，防止日志干扰 TUI
+        inkApp.patchConsole();
+
         // 阻塞等待退出
         inkApp.waitUntilExit();
 

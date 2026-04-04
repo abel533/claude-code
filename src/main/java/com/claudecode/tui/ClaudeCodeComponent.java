@@ -225,10 +225,42 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
             case AssistantMsg m -> {
                 List<Renderable> lines = new ArrayList<>();
-                lines.add(Text.of(
-                        Text.of("● ").color(Color.BRIGHT_CYAN),
-                        Text.of(m.streaming() ? m.text() + "▌" : m.text()).color(Color.WHITE)
-                ));
+                String text = m.text();
+                if (text == null || text.isEmpty()) {
+                    if (m.streaming()) {
+                        lines.add(Text.of(
+                                Text.of("● ").color(Color.BRIGHT_CYAN),
+                                Text.of("▌").color(Color.BRIGHT_CYAN)
+                        ));
+                    }
+                    yield lines;
+                }
+                // 将多行文本拆分为单独的行
+                String[] textLines = text.split("\n", -1);
+                for (int i = 0; i < textLines.length; i++) {
+                    String line = textLines[i];
+                    if (i == 0) {
+                        // 首行带 ● 前缀
+                        String displayLine = line;
+                        if (m.streaming() && i == textLines.length - 1) {
+                            displayLine += "▌";
+                        }
+                        lines.add(Text.of(
+                                Text.of("● ").color(Color.BRIGHT_CYAN),
+                                Text.of(displayLine).color(Color.WHITE)
+                        ));
+                    } else {
+                        // 续行缩进对齐
+                        String displayLine = line;
+                        if (m.streaming() && i == textLines.length - 1) {
+                            displayLine += "▌";
+                        }
+                        lines.add(Text.of(
+                                Text.of("  ").dimmed(),
+                                Text.of(displayLine).color(Color.WHITE)
+                        ));
+                    }
+                }
                 yield lines;
             }
 
