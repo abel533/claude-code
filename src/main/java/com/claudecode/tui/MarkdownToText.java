@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  */
 public class MarkdownToText {
 
-    private static final Pattern HEADER_PATTERN = Pattern.compile("^(#{1,3})\\s+(.+)$");
+    private static final Pattern HEADER_PATTERN = Pattern.compile("^(#{1,6})\\s+(.+)$");
     private static final Pattern BOLD_PATTERN = Pattern.compile("\\*\\*(.+?)\\*\\*");
     private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`([^`]+)`");
     private static final Pattern UNORDERED_LIST_PATTERN = Pattern.compile("^\\s*[-*]\\s+(.+)$");

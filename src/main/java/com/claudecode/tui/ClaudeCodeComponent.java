@@ -80,8 +80,13 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
     /** 思考动画帧 */
     private static final String[] SPINNER_FRAMES = {"◐", "◓", "◑", "◒"};
+    /** 终端标题动画帧（匹配官方 TITLE_ANIMATION_FRAMES） */
+    private static final String[] TITLE_ANIMATION_FRAMES = {"⠂", "⠐"};
+    private static final String TITLE_STATIC_PREFIX = "✳";
     private volatile int spinnerFrame = 0;
     private volatile Thread spinnerThread;
+    /** 终端标题（从首条用户消息推断） */
+    private volatile String sessionTitle = null;
 
     /** 权限确认回调（由权限请求设置，用户输入后调用） */
     private volatile Consumer<String> permissionCallback;
@@ -137,6 +142,8 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         this.toolCount = toolCount;
         this.tokenTracker = tokenTracker;
         this.onExit = onExit;
+        // 设置初始终端标题（匹配官方 process.title = 'claude'）
+        setTerminalTitle(TITLE_STATIC_PREFIX + " Claude Code");
     }
 
     // ==================== 渲染 ====================
@@ -722,10 +729,10 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             // Ctrl+C: 中断 Agent 或双击退出
             if (key.ctrl() && "c".equals(input)) {
                 if (agentRunning.get()) {
-                    // Agent 运行中 → 取消任务
+                    // Agent 运行中 → 仅取消任务，不启动退出窗口
+                    // 官方行为：中断和退出是独立流程，中断不影响 double-press-to-exit
                     agentLoop.cancel();
                     addMessageInternal(new SystemMsg("^C (interrupt)", Color.BRIGHT_YELLOW), s);
-                    lastCtrlCTime = System.currentTimeMillis();
                 } else {
                     long now = System.currentTimeMillis();
                     if (now - lastCtrlCTime < CTRL_C_EXIT_WINDOW_MS) {
@@ -1114,6 +1121,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             onFirstUserInput.accept(text);
             onFirstUserInput = null; // 只触发一次
         }
+        inferSessionTitle(text); // 从首条用户消息推断终端标题
         addMessage(new UserMsg(text));
         setState(new TuiState("", getState().messages, 0, true, ""));
         runAgent(text);
@@ -1158,11 +1166,19 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         synchronized (spinnerLock) {
             stopSpinnerInternal();
             spinnerFrame = 0;
+            setTerminalTitle(computeTerminalTitle()); // 立即更新标题
             Thread t = Thread.startVirtualThread(() -> {
                 try {
+                    int titleUpdateCounter = 0;
                     while (!Thread.currentThread().isInterrupted()) {
                         Thread.sleep(120);
                         spinnerFrame++;
+                        titleUpdateCounter++;
+                        // 每 ~960ms 更新一次终端标题（匹配官方 TITLE_ANIMATION_INTERVAL_MS=960）
+                        if (titleUpdateCounter >= 8) {
+                            titleUpdateCounter = 0;
+                            setTerminalTitle(computeTerminalTitle());
+                        }
                         synchronized (stateLock) {
                             TuiState s = getState();
                             setState(new TuiState(s.inputText, s.messages, s.scrollOffset, s.thinking, s.thinkingText));
@@ -1179,6 +1195,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         synchronized (spinnerLock) {
             stopSpinnerInternal();
         }
+        setTerminalTitle(computeTerminalTitle()); // 恢复静态标题
     }
 
     private void stopSpinnerInternal() {
@@ -1479,5 +1496,51 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    // ==================== 终端标题 ====================
+
+    /**
+     * 设置终端标题（OSC 0 escape sequence）。
+     * 匹配官方 Claude Code 的 useTerminalTitle hook 行为。
+     * Windows 使用 ANSI OSC 0，兼容 Windows Terminal / ConEmu 等现代终端。
+     */
+    private static void setTerminalTitle(String title) {
+        if (title == null || title.isBlank()) return;
+        try {
+            // OSC 0: Set window title and icon name
+            // Format: ESC ] 0 ; <title> BEL
+            System.err.print("\033]0;" + title + "\007");
+            System.err.flush();
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * 根据当前状态生成终端标题文本。
+     * 匹配官方 AnimatedTerminalTitle 组件的行为：
+     * - 空闲: "✳ Claude Code" 或 "✳ <sessionTitle>"
+     * - 工作中: "⠂ <title>" / "⠐ <title>" (交替动画)
+     */
+    private String computeTerminalTitle() {
+        String title = sessionTitle != null ? sessionTitle : "Claude Code";
+        if (agentRunning.get()) {
+            String frame = TITLE_ANIMATION_FRAMES[spinnerFrame % TITLE_ANIMATION_FRAMES.length];
+            return frame + " " + title;
+        }
+        return TITLE_STATIC_PREFIX + " " + title;
+    }
+
+    /**
+     * 从首条用户消息推断会话标题（简化版，不调用 AI）。
+     * 官方使用 Haiku 生成 3-7 词标题，这里取前 40 字符作为简化实现。
+     */
+    private void inferSessionTitle(String userInput) {
+        if (sessionTitle != null || userInput == null || userInput.isBlank()) return;
+        if (userInput.startsWith("/")) return; // 跳过斜杠命令
+        String trimmed = userInput.strip();
+        if (trimmed.length() > 40) {
+            trimmed = trimmed.substring(0, 40) + "…";
+        }
+        sessionTitle = trimmed;
     }
 }
