@@ -74,6 +74,7 @@ public class JinkReplSession {
         component = new ClaudeCodeComponent(
                 agentLoop,
                 commandRegistry,
+                toolRegistry,
                 providerInfo.provider(),
                 providerInfo.model(),
                 providerInfo.baseUrl(),

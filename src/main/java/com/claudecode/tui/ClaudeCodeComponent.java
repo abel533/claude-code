@@ -5,12 +5,16 @@ import com.claudecode.command.CommandRegistry;
 import com.claudecode.console.BannerPrinter;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.core.TokenTracker;
+import com.claudecode.tool.ToolRegistry;
 import com.claudecode.tui.UIMessage.*;
 import io.mybatis.jink.component.*;
 import io.mybatis.jink.input.Key;
 import io.mybatis.jink.style.*;
 import io.mybatis.jink.util.StringWidth;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -57,6 +61,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     // --- 外部依赖（通过构造器注入） ---
     private final AgentLoop agentLoop;
     private final CommandRegistry commandRegistry;
+    private final ToolRegistry toolRegistry;
     private final String provider;
     private final String model;
     private final String baseUrl;
@@ -79,6 +84,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
     public ClaudeCodeComponent(AgentLoop agentLoop,
                                CommandRegistry commandRegistry,
+                               ToolRegistry toolRegistry,
                                String provider, String model, String baseUrl,
                                int toolCount, int cmdCount,
                                TokenTracker tokenTracker,
@@ -86,6 +92,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         super(TuiState.empty());
         this.agentLoop = agentLoop;
         this.commandRegistry = commandRegistry;
+        this.toolRegistry = toolRegistry;
         this.provider = provider;
         this.model = model;
         this.baseUrl = baseUrl;
@@ -468,6 +475,14 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         }
     }
 
+    @Override
+    public void onPaste(String text) {
+        if (agentRunning.get() || text == null || text.isEmpty()) return;
+        TuiState s = getState();
+        abandonHistoryPreview();
+        setState(new TuiState(s.inputText + text, s.messages, s.scrollOffset, false, ""));
+    }
+
     /** 处理权限确认输入 */
     private void handlePermissionInput(String input, Key key, TuiState s) {
         if (key.return_()) {
@@ -501,12 +516,25 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         // 斜杠命令
         if (commandRegistry != null && commandRegistry.isCommand(text)) {
             addMessage(new UserMsg(text));
-            CommandContext cmdCtx = new CommandContext(agentLoop, null, commandRegistry,
-                    new java.io.PrintStream(java.io.OutputStream.nullOutputStream()), () -> {
+            // 捕获命令输出到 ByteArrayOutputStream
+            var baos = new ByteArrayOutputStream();
+            var capturedOut = new PrintStream(baos, true, StandardCharsets.UTF_8);
+            CommandContext cmdCtx = new CommandContext(agentLoop, toolRegistry, commandRegistry,
+                    capturedOut, () -> {
                 if (onExit != null) onExit.run();
             });
             Optional<String> result = commandRegistry.dispatch(text, cmdCtx);
-            result.ifPresent(r -> addMessage(new CommandOutputMsg(r)));
+            // 合并 dispatch 返回值和 capturedOut 的内容
+            StringBuilder output = new StringBuilder();
+            result.ifPresent(output::append);
+            String captured = baos.toString(StandardCharsets.UTF_8);
+            if (!captured.isBlank()) {
+                if (!output.isEmpty()) output.append("\n");
+                output.append(captured);
+            }
+            if (!output.isEmpty()) {
+                addMessage(new CommandOutputMsg(output.toString()));
+            }
             setState(new TuiState("", getState().messages, 0, false, ""));
             return;
         }
