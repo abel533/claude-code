@@ -158,37 +158,48 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 "    │  CODE  │─╯   ",
                 "    ╰─┬────┬─╯     "
         };
-        // 右侧信息
-        String[] info = {
-                "",
-                "Welcome!",
-                "API: " + baseUrl,
-                "Protocol: " + provider.toUpperCase() + "  Model: " + model,
-                "Work Dir: " + System.getProperty("user.dir", "."),
-                "Tools: " + toolCount + " | Commands: " + cmdCount
-        };
-
-        // 构建双列文本行
         int logoWidth = 19;
         int sepWidth = 3; // " │ "
-        int rightWidth = Math.max(0, w - 4 - logoWidth - sepWidth - 2); // 4=border+padding
+        int rightWidth = Math.max(0, w - 4 - logoWidth - sepWidth - 2);
+
+        // 构建右侧信息行（带颜色高亮）
+        @SuppressWarnings("unchecked")
+        Renderable[] rightTexts = {
+                Text.of(""),
+                Text.of("Welcome!").bold(),
+                Text.of(
+                        Text.of("API: ").dimmed(),
+                        Text.of(baseUrl).color(Color.BRIGHT_CYAN)
+                ),
+                Text.of(
+                        Text.of("Protocol: ").dimmed(),
+                        Text.of(provider.toUpperCase()).color(Color.BRIGHT_GREEN),
+                        Text.of("  Model: ").dimmed(),
+                        Text.of(model).color(Color.BRIGHT_GREEN)
+                ),
+                Text.of(
+                        Text.of("Work Dir: ").dimmed(),
+                        Text.of(System.getProperty("user.dir", ".")).color(Color.BRIGHT_YELLOW)
+                ),
+                Text.of(
+                        Text.of("Tools: ").dimmed(),
+                        Text.of(String.valueOf(toolCount)).color(Color.BRIGHT_CYAN),
+                        Text.of(" │ Commands: ").dimmed(),
+                        Text.of(String.valueOf(cmdCount)).color(Color.BRIGHT_CYAN)
+                )
+        };
 
         List<Renderable> rows = new ArrayList<>();
-        int maxRows = Math.max(logo.length, info.length);
+        int maxRows = Math.max(logo.length, rightTexts.length);
         for (int i = 0; i < maxRows; i++) {
             String left = i < logo.length ? logo[i] : "";
-            String right = i < info.length ? info[i] : "";
-            // 补齐左侧
             if (left.length() < logoWidth) left = left + " ".repeat(logoWidth - left.length());
-            // 截断右侧
-            if (right.length() > rightWidth) right = right.substring(0, rightWidth);
-            // 右侧补齐
-            right = right + " ".repeat(Math.max(0, rightWidth - right.length()));
+            Renderable rightPart = i < rightTexts.length ? rightTexts[i] : Text.of("");
 
             rows.add(Text.of(
                     Text.of(left).color(Color.BRIGHT_CYAN),
                     Text.of(" │ ").dimmed(),
-                    i == 1 ? Text.of(right).bold() : Text.of(right).dimmed()
+                    rightPart
             ));
         }
 
@@ -259,34 +270,18 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                     yield lines;
                 }
 
-                if (!m.streaming()) {
-                    // 已完成的消息 — 使用 Markdown 渲染
-                    List<Renderable> mdLines = MarkdownToText.convert(text);
-                    for (int i = 0; i < mdLines.size(); i++) {
-                        if (i == 0) {
-                            lines.add(Text.of(Text.of("● ").color(Color.BRIGHT_CYAN), mdLines.get(i)));
-                        } else {
-                            lines.add(Text.of(Text.of("  "), mdLines.get(i)));
-                        }
-                    }
-                } else {
-                    // 流式中 — 直接按行显示带光标
-                    String[] textLines = text.split("\n", -1);
-                    for (int i = 0; i < textLines.length; i++) {
-                        String line = textLines[i];
-                        String displayLine = (m.streaming() && i == textLines.length - 1)
-                                ? line + "▌" : line;
-                        if (i == 0) {
-                            lines.add(Text.of(
-                                    Text.of("● ").color(Color.BRIGHT_CYAN),
-                                    Text.of(displayLine).color(Color.WHITE)
-                            ));
-                        } else {
-                            lines.add(Text.of(
-                                    Text.of("  ").dimmed(),
-                                    Text.of(displayLine).color(Color.WHITE)
-                            ));
-                        }
+                // 始终使用 Markdown 渲染（流式和完成都渲染）
+                List<Renderable> mdLines = MarkdownToText.convert(text);
+                // 流式时在最后一行追加光标
+                if (m.streaming() && !mdLines.isEmpty()) {
+                    Renderable lastLine = mdLines.getLast();
+                    mdLines.set(mdLines.size() - 1, Text.of(lastLine, Text.of("▌").color(Color.BRIGHT_CYAN)));
+                }
+                for (int i = 0; i < mdLines.size(); i++) {
+                    if (i == 0) {
+                        lines.add(Text.of(Text.of("● ").color(Color.BRIGHT_CYAN), mdLines.get(i)));
+                    } else {
+                        lines.add(Text.of(Text.of("  "), mdLines.get(i)));
                     }
                 }
                 yield lines;
@@ -698,8 +693,9 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
                 msgs.add(new AssistantMsg(token, true));
             }
 
+            // 保留用户的滚动偏移（如果用户手动滚动过则不自动归零）
             setState(new TuiState(s.inputText, Collections.unmodifiableList(msgs),
-                    0, s.thinking, s.thinkingText));
+                    s.scrollOffset, s.thinking, s.thinkingText));
         }
     }
 
@@ -712,7 +708,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             if (!msgs.isEmpty() && msgs.getLast() instanceof AssistantMsg am && am.streaming()) {
                 msgs.set(msgs.size() - 1, am.finish());
                 setState(new TuiState(s.inputText, Collections.unmodifiableList(msgs),
-                        0, s.thinking, s.thinkingText));
+                        s.scrollOffset, s.thinking, s.thinkingText));
             }
         }
     }
