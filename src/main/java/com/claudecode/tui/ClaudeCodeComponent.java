@@ -77,6 +77,8 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     private int historyIndex = -1;
     private String savedInput = "";
     private final AtomicBoolean agentRunning = new AtomicBoolean(false);
+    /** jink 渲染实例引用（用于 writeRaw 设置终端标题等） */
+    private volatile io.mybatis.jink.Ink.Instance inkApp;
 
     /** 思考动画帧 */
     private static final String[] SPINNER_FRAMES = {"◐", "◓", "◑", "◒"};
@@ -1476,6 +1478,11 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         return agentRunning.get();
     }
 
+    /** 设置 jink Ink.Instance 引用（用于 writeRaw 终端标题等） */
+    public void setInkApp(io.mybatis.jink.Ink.Instance app) {
+        this.inkApp = app;
+    }
+
     /** 从 JSON 工具参数中提取人类可读的摘要 */
     private static String extractToolSummary(String toolName, String args) {
         if (args == null || args.isBlank()) return null;
@@ -1506,19 +1513,18 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
     /**
      * 设置终端标题（OSC 0 escape sequence）。
-     * 匹配官方 Claude Code 的 useTerminalTitle hook 行为。
-     * 必须绕过 jink 的 ConsolePatcher（它会拦截 System.out/err），
-     * 直接写入原始输出流。
+     * 匹配官方 Claude Code 的 useTerminalTitle hook / TerminalWriteContext 行为。
+     * 通过 jink 的 Ink.Instance.writeRaw() 直接写入 JLine 终端。
      */
-    private static void setTerminalTitle(String title) {
+    private void setTerminalTitle(String title) {
         if (title == null || title.isBlank()) return;
         try {
-            // 绕过 ConsolePatcher 拦截，直接写入终端
-            PrintStream raw = io.mybatis.jink.util.ConsolePatcher.getOriginalOut();
-            // OSC 0: Set window title and icon name
-            // Format: ESC ] 0 ; <title> BEL
-            raw.print("\033]0;" + title + "\007");
-            raw.flush();
+            var app = this.inkApp;
+            if (app != null) {
+                // OSC 0: Set window title and icon name
+                // Format: ESC ] 0 ; <title> BEL
+                app.writeRaw("\033]0;" + title + "\007");
+            }
         } catch (Exception ignored) {}
     }
 

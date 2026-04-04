@@ -95,6 +95,9 @@ public class JinkReplSession {
         // 启动 jink 渲染（exitOnCtrlC=false，让组件处理 Ctrl+C）
         inkApp = Ink.render(component, false);
 
+        // 设置 inkApp 引用，使组件可以通过 writeRaw 设置终端标题
+        component.setInkApp(inkApp);
+
         // 拦截 System.out/err，防止日志干扰 TUI
         inkApp.patchConsole();
 
