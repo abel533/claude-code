@@ -116,6 +116,7 @@ public class JinkReplSession {
                 case START -> {
                     // 完成当前流式消息（如果有）
                     finishCurrentStreaming();
+                    component.setCurrentToolName(event.toolName());
                     component.addMessage(new ToolCallMsg(
                             event.toolName(),
                             event.arguments(),

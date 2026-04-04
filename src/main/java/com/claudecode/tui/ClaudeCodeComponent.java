@@ -87,8 +87,10 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     private static final String TITLE_STATIC_PREFIX = "✳";
     private volatile int spinnerFrame = 0;
     private volatile Thread spinnerThread;
-    /** 终端标题（从首条用户消息推断） */
+    /** 终端标题（从用户消息推断，每次新消息都更新） */
     private volatile String sessionTitle = null;
+    /** 当前正在执行的工具名（用于标题显示） */
+    private volatile String currentToolName = null;
     private volatile boolean titleInitialized = false;
 
     /** 权限确认回调（由权限请求设置，用户输入后调用） */
@@ -1125,7 +1127,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             onFirstUserInput.accept(text);
             onFirstUserInput = null; // 只触发一次
         }
-        inferSessionTitle(text); // 从首条用户消息推断终端标题
+        updateSessionTitle(text); // 从用户消息更新终端标题
         addMessage(new UserMsg(text));
         setState(new TuiState("", getState().messages, 0, true, ""));
         runAgent(text);
@@ -1266,6 +1268,7 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
 
     /** 更新最后一个工具调用消息的结果 */
     public void completeLastToolCall(String result) {
+        currentToolName = null; // 工具执行完成，清除工具名
         synchronized (stateLock) {
             TuiState s = getState();
             List<UIMessage> msgs = new ArrayList<>(s.messages);
@@ -1298,6 +1301,11 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
             setState(new TuiState(s.inputText, Collections.unmodifiableList(msgs),
                     s.scrollOffset, s.thinking, s.thinkingText));
         }
+    }
+
+    /** 设置当前正在执行的工具名（用于终端标题显示） */
+    public void setCurrentToolName(String toolName) {
+        this.currentToolName = toolName;
     }
 
     /** 设置简单文本输入回调（用于无选项的 AskUser） */
@@ -1535,22 +1543,30 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
      * 匹配官方 AnimatedTerminalTitle 组件的行为：
      * - 空闲: "✳ Claude Code" 或 "✳ <sessionTitle>"
      * - 工作中: "⠂ <title>" / "⠐ <title>" (交替动画)
+     * - 等待审批: "✳ <title>" (暂停动画)
+     * - 工具执行中: "⠂ <toolName> · <title>"
      */
     private String computeTerminalTitle() {
         String title = sessionTitle != null ? sessionTitle : "Claude Code";
-        if (agentRunning.get()) {
+        boolean isWaiting = permissionCallback != null;
+        if (agentRunning.get() && !isWaiting) {
             String frame = TITLE_ANIMATION_FRAMES[spinnerFrame % TITLE_ANIMATION_FRAMES.length];
+            String toolName = currentToolName;
+            if (toolName != null && !toolName.isEmpty()) {
+                return frame + " " + toolName + " · " + title;
+            }
             return frame + " " + title;
         }
         return TITLE_STATIC_PREFIX + " " + title;
     }
 
     /**
-     * 从首条用户消息推断会话标题（简化版，不调用 AI）。
+     * 从用户消息更新会话标题。
      * 官方使用 Haiku 生成 3-7 词标题，这里取前 40 字符作为简化实现。
+     * 每次新用户消息都更新标题，使其反映当前对话主题。
      */
-    private void inferSessionTitle(String userInput) {
-        if (sessionTitle != null || userInput == null || userInput.isBlank()) return;
+    private void updateSessionTitle(String userInput) {
+        if (userInput == null || userInput.isBlank()) return;
         if (userInput.startsWith("/")) return; // 跳过斜杠命令
         String trimmed = userInput.strip();
         if (trimmed.length() > 40) {
