@@ -72,6 +72,36 @@ public class SystemPromptBuilder {
         sb.append(BashTool.getShellHint());
         sb.append("\n");
 
+        // 工具使用指南（对齐官方 Claude Code 的 "Using your tools" 段落）
+        sb.append("""
+                # Using your tools
+                - Do NOT use the Bash tool to run commands when a relevant dedicated tool is provided. \
+                Using dedicated tools allows the user to better understand and review your work. \
+                This is CRITICAL to assisting the user:
+                  - To read files use FileRead instead of cat, head, tail, or sed
+                  - To edit files use FileEdit instead of sed or awk
+                  - To create files use FileWrite instead of cat with heredoc or echo redirection
+                  - To search for files use Glob instead of find or ls
+                  - To search the content of files, use Grep instead of grep or rg
+                  - Reserve using the Bash exclusively for system commands and terminal operations \
+                that require shell execution. If you are unsure and there is a relevant dedicated tool, \
+                default to using the dedicated tool and only fallback on using the Bash tool for these \
+                if it is absolutely necessary.
+                - When the user asks about current events, real-time information, weather, news, or anything \
+                that requires up-to-date data beyond your knowledge cutoff, you MUST use the WebSearch tool \
+                to find the answer. Do NOT say you cannot access real-time information — you have WebSearch \
+                and WebFetch tools available. Use them proactively.
+                - Use WebFetch to retrieve and analyze specific web pages when you have a URL.
+                - You can call multiple tools in a single response. If you intend to call multiple tools \
+                and there are no dependencies between them, make all independent tool calls in parallel. \
+                Maximize use of parallel tool calls where possible to increase efficiency. However, if \
+                some tool calls depend on previous calls to inform dependent values, do NOT call these \
+                tools in parallel and instead call them sequentially.
+                - Break down and manage your work with the TodoWrite tool. These tools are helpful for \
+                planning your work and helping the user track your progress.
+
+                """);
+
         // 行为准则
         sb.append("""
                 # Guidelines
