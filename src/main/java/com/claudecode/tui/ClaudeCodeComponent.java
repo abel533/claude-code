@@ -3,7 +3,6 @@ package com.claudecode.tui;
 import com.claudecode.command.CommandContext;
 import com.claudecode.command.CommandRegistry;
 import com.claudecode.console.BannerPrinter;
-import com.claudecode.console.MarkdownRenderer;
 import com.claudecode.core.AgentLoop;
 import com.claudecode.core.TokenTracker;
 import com.claudecode.tui.UIMessage.*;
@@ -64,7 +63,6 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     private final int toolCount;
     private final int cmdCount;
     private final TokenTracker tokenTracker;
-    private final MarkdownRenderer markdownRenderer;
     private final Runnable onExit;
 
     // --- 内部状态 ---
@@ -76,8 +74,8 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     /** 权限确认回调（由权限请求设置，用户输入后调用） */
     private volatile Consumer<String> permissionCallback;
 
-    /** 流式 Markdown 渲染状态 */
-    private MarkdownRenderer.StreamState streamMdState = new MarkdownRenderer.StreamState();
+    /** 首次用户输入回调（用于 conversation summary） */
+    private Consumer<String> onFirstUserInput;
 
     public ClaudeCodeComponent(AgentLoop agentLoop,
                                CommandRegistry commandRegistry,
@@ -94,7 +92,6 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         this.toolCount = toolCount;
         this.cmdCount = cmdCount;
         this.tokenTracker = tokenTracker;
-        this.markdownRenderer = new MarkdownRenderer(null); // 不直接打印，用 renderLine()
         this.onExit = onExit;
     }
 
@@ -515,6 +512,10 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
         }
 
         // Agent 调用
+        if (onFirstUserInput != null) {
+            onFirstUserInput.accept(text);
+            onFirstUserInput = null; // 只触发一次
+        }
         addMessage(new UserMsg(text));
         setState(new TuiState("", getState().messages, 0, true, ""));
         runAgent(text);
@@ -523,7 +524,6 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     /** 在后台线程运行 Agent 循环 */
     private void runAgent(String userInput) {
         agentRunning.set(true);
-        streamMdState = new MarkdownRenderer.StreamState();
 
         Thread.startVirtualThread(() -> {
             long startTime = System.currentTimeMillis();
@@ -615,6 +615,11 @@ public class ClaudeCodeComponent extends Component<ClaudeCodeComponent.TuiState>
     public void setThinking(boolean thinking, String text) {
         TuiState s = getState();
         setState(new TuiState(s.inputText, s.messages, s.scrollOffset, thinking, text));
+    }
+
+    /** 设置首次用户输入回调 */
+    public void setOnFirstUserInput(Consumer<String> callback) {
+        this.onFirstUserInput = callback;
     }
 
     // ==================== 历史导航 ====================

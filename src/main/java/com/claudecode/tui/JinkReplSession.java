@@ -87,6 +87,11 @@ public class JinkReplSession {
         setupAgentCallbacks();
         setupToolContextCallbacks();
 
+        // 注册首次用户输入回调（用于对话摘要）
+        component.setOnFirstUserInput(text -> {
+            conversationSummary = text.length() > 40 ? text.substring(0, 40) : text;
+        });
+
         // 启动 jink 渲染
         inkApp = Ink.render(component);
 
