@@ -16,6 +16,7 @@ import com.claudecode.permission.PermissionSettings;
 import com.claudecode.plugin.OutputStylePlugin;
 import com.claudecode.plugin.PluginManager;
 import com.claudecode.repl.ReplSession;
+import com.claudecode.tui.JinkReplSession;
 import com.claudecode.tool.ToolContext;
 import com.claudecode.tool.ToolRegistry;
 import com.claudecode.tool.impl.*;
@@ -263,6 +264,13 @@ public class AppConfig {
         toolContext.set("PLUGIN_MANAGER", pluginManager);
 
         return mainLoop;
+    }
+
+    @Bean
+    public JinkReplSession jinkReplSession(AgentLoop agentLoop, ToolRegistry toolRegistry,
+                                           CommandRegistry commandRegistry, ProviderInfo providerInfo,
+                                           TokenTracker tokenTracker) {
+        return new JinkReplSession(agentLoop, toolRegistry, commandRegistry, providerInfo, tokenTracker);
     }
 
     @Bean

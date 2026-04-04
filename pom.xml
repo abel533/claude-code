@@ -56,6 +56,13 @@
             <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
 
+        <!-- Jink: React-like Terminal UI 框架（基于 JLine，提供组件化全屏渲染） -->
+        <dependency>
+            <groupId>io.mybatis.jink</groupId>
+            <artifactId>jink</artifactId>
+            <version>0.3.0-SNAPSHOT</version>
+        </dependency>
+
         <!-- JLine 3: 终端交互（行编辑、历史、Tab补全、ANSI样式） -->
         <dependency>
             <groupId>org.jline</groupId>
