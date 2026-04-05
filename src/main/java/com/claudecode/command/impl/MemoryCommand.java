@@ -48,6 +48,8 @@ public class MemoryCommand implements SlashCommand {
             return handleEdit();
         } else if (args.equals("user")) {
             return showUserMemory();
+        } else if (args.equals("session")) {
+            return showSessionMemory();
         } else {
             return showProjectMemory();
         }
@@ -153,5 +155,42 @@ public class MemoryCommand implements SlashCommand {
         } catch (Exception e) {
             return AnsiStyle.red("  ✗ Failed to open editor: " + e.getMessage());
         }
+    }
+
+    /** 显示会话记忆 (SESSION_MEMORY.md) */
+    private String showSessionMemory() {
+        Path projectDir = Path.of(System.getProperty("user.dir"));
+        String sanitized = projectDir.toAbsolutePath().toString()
+                .replace(":", "_")
+                .replace("\\", "_")
+                .replace("/", "_");
+        Path memoryFile = Path.of(System.getProperty("user.home"))
+                .resolve(".claude").resolve("projects").resolve(sanitized)
+                .resolve("memory").resolve("SESSION_MEMORY.md");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n");
+        sb.append(AnsiStyle.bold("  🧠 Session Memory\n"));
+        sb.append("  ").append("─".repeat(50)).append("\n");
+        sb.append("  ").append(AnsiStyle.dim("Path: " + memoryFile)).append("\n\n");
+
+        if (Files.exists(memoryFile)) {
+            try {
+                String content = Files.readString(memoryFile, StandardCharsets.UTF_8);
+                if (content.isBlank()) {
+                    sb.append(AnsiStyle.dim("  (Session memory is empty)\n"));
+                } else {
+                    content.lines().forEach(line -> sb.append("  ").append(line).append("\n"));
+                }
+            } catch (IOException e) {
+                sb.append(AnsiStyle.red("  ✗ Read failed: " + e.getMessage() + "\n"));
+            }
+        } else {
+            sb.append(AnsiStyle.dim("  (No session memory yet)\n\n"));
+            sb.append(AnsiStyle.dim("  Session memory is automatically created after extended conversations.\n"));
+            sb.append(AnsiStyle.dim("  It captures key decisions, code changes, and discoveries.\n"));
+        }
+
+        return sb.toString();
     }
 }

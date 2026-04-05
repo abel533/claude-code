@@ -7,6 +7,7 @@ import com.claudecode.context.GitContext;
 import com.claudecode.context.SkillLoader;
 import com.claudecode.context.SystemPromptBuilder;
 import com.claudecode.core.AgentLoop;
+import com.claudecode.core.SessionMemoryService;
 import com.claudecode.core.TaskManager;
 import com.claudecode.core.TokenTracker;
 import com.claudecode.core.compact.AutoCompactManager;
@@ -232,6 +233,12 @@ public class AppConfig {
     }
 
     @Bean
+    public SessionMemoryService sessionMemoryService() {
+        Path projectDir = Path.of(System.getProperty("user.dir"));
+        return new SessionMemoryService(projectDir);
+    }
+
+    @Bean
     public TokenTracker tokenTracker(ProviderInfo info) {
         TokenTracker tracker = new TokenTracker();
         tracker.setModel(info.model());
@@ -239,7 +246,7 @@ public class AppConfig {
     }
 
     @Bean
-    public String systemPrompt(ToolContext toolContext) {
+    public String systemPrompt(ToolContext toolContext, SessionMemoryService sessionMemoryService) {
         Path projectDir = Path.of(System.getProperty("user.dir"));
 
         ClaudeMdLoader claudeLoader = new ClaudeMdLoader(projectDir);
@@ -252,13 +259,20 @@ public class AppConfig {
         // Inject SkillLoader into ToolContext for SkillTool
         toolContext.set(SkillTool.SKILL_LOADER_KEY, skillLoader);
 
+        // Inject SessionMemoryService into ToolContext
+        toolContext.set("SESSION_MEMORY_SERVICE", sessionMemoryService);
+
         GitContext gitContext = new GitContext(projectDir).collect();
         String gitSummary = gitContext.buildSummary();
+
+        // Load existing session memory
+        String sessionMemory = sessionMemoryService.getMemoryContent();
 
         return new SystemPromptBuilder()
                 .claudeMd(claudeMd)
                 .skills(skillsSummary)
                 .git(gitSummary)
+                .sessionMemory(sessionMemory)
                 .build();
     }
 
@@ -266,7 +280,7 @@ public class AppConfig {
     public AgentLoop agentLoop(ChatModel activeChatModel, ToolRegistry toolRegistry,
                                ToolContext toolContext, String systemPrompt, TokenTracker tokenTracker,
                                PluginManager pluginManager, PermissionRuleEngine permissionRuleEngine,
-                               AutoCompactManager autoCompactManager) {
+                               AutoCompactManager autoCompactManager, SessionMemoryService sessionMemoryService) {
         AgentLoop mainLoop = new AgentLoop(activeChatModel, toolRegistry, toolContext, systemPrompt, tokenTracker);
 
         // 注入权限引擎和自动压缩管理器
@@ -274,11 +288,16 @@ public class AppConfig {
         mainLoop.setAutoCompactManager(autoCompactManager);
 
         // 注册子 Agent 工厂
-        toolContext.set(AgentTool.AGENT_FACTORY_KEY,
+        java.util.function.Function<String, String> agentFactory =
                 (java.util.function.Function<String, String>) prompt -> {
                     AgentLoop subLoop = new AgentLoop(activeChatModel, toolRegistry, toolContext, systemPrompt);
                     return subLoop.run(prompt);
-                });
+                };
+        toolContext.set(AgentTool.AGENT_FACTORY_KEY, agentFactory);
+
+        // Wire SessionMemoryService with agent factory and agent loop
+        sessionMemoryService.setAgentFactory(agentFactory);
+        mainLoop.setSessionMemoryService(sessionMemoryService);
 
         // 注册 PluginManager 到 ToolContext
         toolContext.set("PLUGIN_MANAGER", pluginManager);

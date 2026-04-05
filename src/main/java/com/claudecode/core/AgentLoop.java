@@ -63,6 +63,9 @@ public class AgentLoop {
     /** 自动压缩管理器（可选） */
     private AutoCompactManager autoCompactManager;
 
+    /** 会话记忆服务（可选） */
+    private SessionMemoryService sessionMemoryService;
+
     /** 拒绝追踪器 */
     private final DenialTracker denialTracker = new DenialTracker();
 
@@ -125,6 +128,10 @@ public class AgentLoop {
 
     public void setAutoCompactManager(AutoCompactManager manager) {
         this.autoCompactManager = manager;
+    }
+
+    public void setSessionMemoryService(SessionMemoryService service) {
+        this.sessionMemoryService = service;
     }
 
     public AutoCompactManager getAutoCompactManager() {
@@ -242,6 +249,17 @@ public class AgentLoop {
                 autoCompactManager.autoCompactIfNeeded(
                         () -> messageHistory,
                         this::replaceHistory
+                );
+            }
+
+            // 会话记忆提取检查（异步，不阻塞主循环）
+            if (sessionMemoryService != null) {
+                int toolCallCount = result.assistant.hasToolCalls()
+                        ? result.assistant.getToolCalls().size() : 0;
+                sessionMemoryService.onPostSampling(
+                        result.promptTokens + result.completionTokens,
+                        toolCallCount,
+                        messageHistory
                 );
             }
         }
