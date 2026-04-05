@@ -30,6 +30,9 @@ public class SystemPromptBuilder {
     private String skillsSummary;
     private String gitSummary;
     private String languagePreference;
+    private boolean planMode;
+    private String planFilePath;
+    private String sessionMemory;
 
     public SystemPromptBuilder() {
         this.workDir = System.getProperty("user.dir");
@@ -64,6 +67,17 @@ public class SystemPromptBuilder {
 
     public SystemPromptBuilder language(String languagePreference) {
         this.languagePreference = languagePreference;
+        return this;
+    }
+
+    public SystemPromptBuilder planMode(boolean active, String planFilePath) {
+        this.planMode = active;
+        this.planFilePath = planFilePath;
+        return this;
+    }
+
+    public SystemPromptBuilder sessionMemory(String sessionMemory) {
+        this.sessionMemory = sessionMemory;
         return this;
     }
 
@@ -128,6 +142,18 @@ public class SystemPromptBuilder {
         if (customInstructions != null && !customInstructions.isBlank()) {
             sb.append("# Custom Instructions\n");
             sb.append(customInstructions).append("\n\n");
+        }
+
+        // ── 10. Plan Mode Instructions (对应 TS getPlanModeInstructions) ──
+        if (planMode) {
+            sb.append(getPlanModeSection());
+        }
+
+        // ── 11. Session Memory (对应 TS SessionMemory) ──
+        if (sessionMemory != null && !sessionMemory.isBlank()) {
+            sb.append("# Session Memory\n");
+            sb.append("The following is a summary of key information from this conversation:\n");
+            sb.append(sessionMemory).append("\n\n");
         }
 
         return sb.toString();
@@ -362,5 +388,63 @@ public class SystemPromptBuilder {
         sb.append(BashTool.getShellHint());
         sb.append("\n");
         return sb.toString();
+    }
+
+    /**
+     * 对应 TS getPlanModeInstructions()。
+     * 计划模式5阶段工作流指导。
+     */
+    private String getPlanModeSection() {
+        String planPath = planFilePath != null ? planFilePath : "~/.claude/projects/PLAN.md";
+        return """
+                # Plan Mode Active
+                
+                The user indicated they do NOT want execution yet. They want you to analyze and plan first.
+                YOU MUST NOT make any edits (except the plan file), run shell commands, or make changes.
+                
+                ## Plan File
+                Location: %s
+                This is the ONLY file you may create or edit in plan mode.
+                
+                ## Plan Workflow (5 Phases)
+                
+                ### Phase 1: Initial Understanding
+                - Use read-only tools (Read, Grep, Glob, ListFiles) to explore the codebase
+                - Find existing implementations and reusable patterns
+                - Understand the project structure and conventions
+                
+                ### Phase 2: Design
+                - Based on your understanding, design the implementation approach
+                - Consider multiple perspectives and trade-offs
+                - Identify potential risks and edge cases
+                
+                ### Phase 3: Review
+                - Read critical files you identified
+                - Ensure your plan aligns with the user's original request
+                - Use AskUserQuestion to clarify any ambiguous requirements
+                
+                ### Phase 4: Write the Plan
+                - Write your plan to the plan file ONLY
+                - Include these sections:
+                  - **Context**: Why this change is needed (problem/need/outcome)
+                  - **Recommended Approach**: Single recommended approach (not all alternatives)
+                  - **File Paths**: Critical files to be modified
+                  - **Existing Utilities**: Functions to reuse (with file paths)
+                  - **Verification**: Command to test the changes end-to-end
+                - Keep the plan concise but detailed (~40 lines typical)
+                
+                ### Phase 5: Exit Plan Mode
+                - Call ExitPlanMode with a brief summary
+                - The user will review and approve the plan
+                - Do NOT use AskUserQuestion for plan approval — call ExitPlanMode instead
+                
+                ## Important Reminders
+                - You can ONLY use: Read, Grep, Glob, ListFiles, WebFetch, WebSearch, AskUserQuestion
+                - You can ONLY write to: %s
+                - Do NOT run Bash commands
+                - Do NOT edit any source files
+                - Do NOT use FileWrite or FileEdit except for the plan file
+                
+                """.formatted(planPath, planPath);
     }
 }

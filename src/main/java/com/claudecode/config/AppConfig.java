@@ -79,10 +79,11 @@ public class AppConfig {
 
     @Bean
     public ToolRegistry toolRegistry(TaskManager taskManager, McpManager mcpManager,
-                                     ToolContext toolContext) {
+                                     ToolContext toolContext, PermissionSettings permissionSettings) {
         // 将 TaskManager 和 McpManager 注册到 ToolContext 供工具使用
         toolContext.set("TASK_MANAGER", taskManager);
         toolContext.set("MCP_MANAGER", mcpManager);
+        toolContext.set("PERMISSION_SETTINGS", permissionSettings);
 
         ToolRegistry registry = new ToolRegistry();
         registry.registerAll(
@@ -110,7 +111,9 @@ public class AppConfig {
                 new ConfigTool(),
                 // P2: 实用工具
                 new SleepTool(),
-                new ToolSearchTool()
+                new ToolSearchTool(),
+                new EnterPlanModeTool(),
+                new ExitPlanModeTool()
         );
 
         // P2: 注册 MCP 工具桥接（将远程 MCP 工具映射为本地工具）
@@ -156,6 +159,7 @@ public class AppConfig {
                 new FilesCommand(),
                 new PermissionsCommand(permissionSettings),
                 new TasksCommand(taskManager),
+                new PlanCommand(permissionSettings),
                 // P2 命令
                 new HooksCommand(),
                 new ReviewCommand(),

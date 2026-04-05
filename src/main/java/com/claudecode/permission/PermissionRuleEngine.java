@@ -1,6 +1,7 @@
 package com.claudecode.permission;
 
 import com.claudecode.permission.PermissionTypes.*;
+import com.claudecode.tool.impl.EnterPlanModeTool;
 
 import java.util.List;
 import java.util.Map;
@@ -25,8 +26,12 @@ public class PermissionRuleEngine {
     private static final Set<String> FILE_EDIT_TOOLS = Set.of("Write", "Edit", "NotebookEdit");
     private static final Set<String> READ_ONLY_TOOLS = Set.of(
             "Read", "Glob", "Grep", "ListFiles", "WebFetch", "WebSearch",
-            "TodoRead", "TaskGet", "TaskList", "AskUserQuestion"
+            "TodoRead", "TaskGet", "TaskList", "AskUserQuestion",
+            "EnterPlanMode", "ExitPlanMode", "ToolSearch"
     );
+
+    /** Tools allowed to operate on plan file during PLAN mode */
+    private static final Set<String> PLAN_FILE_TOOLS = Set.of("Write", "Edit");
 
     private final PermissionSettings settings;
 
@@ -43,6 +48,14 @@ public class PermissionRuleEngine {
      * @return 权限决策
      */
     public PermissionDecision evaluate(String toolName, Map<String, Object> input, boolean isReadOnly) {
+        return evaluate(toolName, input, isReadOnly, null);
+    }
+
+    /**
+     * 评估工具调用的权限（带 ToolContext 用于 plan 模式检查）
+     */
+    public PermissionDecision evaluate(String toolName, Map<String, Object> input,
+                                       boolean isReadOnly, Object toolContext) {
         PermissionMode mode = settings.getCurrentMode();
 
         // BYPASS 模式：全部允许
@@ -50,10 +63,14 @@ public class PermissionRuleEngine {
             return PermissionDecision.allow("Bypass mode enabled");
         }
 
-        // PLAN 模式：仅允许只读工具
+        // PLAN 模式：仅允许只读工具 + plan文件编辑
         if (mode == PermissionMode.PLAN) {
             if (isReadOnly || READ_ONLY_TOOLS.contains(toolName)) {
                 return PermissionDecision.allow("Read-only tool allowed in plan mode");
+            }
+            // Allow Write/Edit to plan file only
+            if (PLAN_FILE_TOOLS.contains(toolName) && isPlanFileOperation(input, toolContext)) {
+                return PermissionDecision.allow("Plan file edit allowed in plan mode");
             }
             return PermissionDecision.deny("Plan mode: execution disabled (analysis only)");
         }
@@ -177,5 +194,37 @@ public class PermissionRuleEngine {
         String trimmed = command.trim();
         int space = trimmed.indexOf(' ');
         return space > 0 ? trimmed.substring(0, space) : trimmed;
+    }
+
+    /**
+     * 检查文件操作是否针对 plan 文件。
+     * 在 PLAN 模式中，只有 PLAN.md 可以被编辑。
+     */
+    private boolean isPlanFileOperation(Map<String, Object> input, Object toolContext) {
+        if (input == null) return false;
+        String filePath = (String) input.get("file_path");
+        if (filePath == null) return false;
+
+        // Check if the file path ends with PLAN.md
+        if (filePath.endsWith("PLAN.md") || filePath.endsWith("plan.md")) {
+            return true;
+        }
+
+        // If we have toolContext, check against stored plan file path
+        if (toolContext != null) {
+            try {
+                var ctx = (com.claudecode.tool.ToolContext) toolContext;
+                String planPath = ctx.get(EnterPlanModeTool.PLAN_FILE_PATH_KEY);
+                if (planPath != null) {
+                    var targetPath = java.nio.file.Path.of(filePath).toAbsolutePath().normalize();
+                    var planFilePath = java.nio.file.Path.of(planPath).toAbsolutePath().normalize();
+                    return targetPath.equals(planFilePath);
+                }
+            } catch (Exception e) {
+                // Ignore cast/access errors
+            }
+        }
+
+        return false;
     }
 }
