@@ -126,11 +126,24 @@ public class McpManager implements AutoCloseable {
                         Iterator<Map.Entry<String, JsonNode>> envFields = serverDef.get("env").fields();
                         while (envFields.hasNext()) {
                             Map.Entry<String, JsonNode> envEntry = envFields.next();
-                            env.put(envEntry.getKey(), envEntry.getValue().asText());
+                            env.put(envEntry.getKey(), expandEnvVars(envEntry.getValue().asText()));
                         }
                     }
 
-                    connect(name, command, args, env);
+                    // Expand env vars in command and args
+                    command = expandEnvVars(command);
+                    List<String> expandedArgs = new ArrayList<>();
+                    for (String arg : args) {
+                        expandedArgs.add(expandEnvVars(arg));
+                    }
+
+                    // Check if this is an HTTP/SSE server (url field present)
+                    if (serverDef.has("url")) {
+                        String url = expandEnvVars(serverDef.get("url").asText());
+                        connectHttp(name, url, env);
+                    } else {
+                        connect(name, command, expandedArgs, env);
+                    }
                 } catch (Exception e) {
                     log.error("Failed to connect MCP server '{}' from config: {}", name, e.getMessage());
                 }
@@ -414,5 +427,102 @@ public class McpManager implements AutoCloseable {
         }
 
         log.info("All MCP connections closed");
+    }
+
+    /**
+     * 连接 HTTP+SSE MCP 服务器。
+     *
+     * @param name 服务器名称
+     * @param url  服务器 URL
+     * @param env  环境变量（用于请求头等）
+     * @return 已初始化的 MCP 客户端
+     * @throws McpException 连接或初始化失败
+     */
+    public McpClient connectHttp(String name, String url, Map<String, String> env) throws McpException {
+        if (clients.containsKey(name)) {
+            log.info("MCP server '{}' already exists, disconnecting old connection", name);
+            try {
+                disconnect(name);
+            } catch (Exception e) {
+                log.warn("Exception disconnecting old MCP connection '{}': {}", name, e.getMessage());
+            }
+        }
+
+        log.info("Connecting MCP HTTP server '{}': {}", name, url);
+
+        // Extract auth headers from env
+        Map<String, String> headers = new HashMap<>();
+        if (env != null) {
+            String authToken = env.get("AUTHORIZATION");
+            if (authToken != null) {
+                headers.put("Authorization", authToken);
+            }
+            String apiKey = env.get("API_KEY");
+            if (apiKey != null) {
+                headers.put("X-API-Key", apiKey);
+            }
+        }
+
+        HttpSseTransport transport = new HttpSseTransport(url, headers, null);
+        McpClient client;
+        try {
+            transport.connect();
+            client = new McpClient(name, transport);
+            client.initialize();
+        } catch (Exception e) {
+            try {
+                transport.close();
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw (e instanceof McpException mcp) ? mcp
+                    : new McpException("Failed to connect MCP HTTP server '" + name + "': " + e.getMessage(), e);
+        }
+
+        clients.put(name, client);
+        for (McpClient.McpTool tool : client.getTools()) {
+            toolToServer.put(tool.name(), name);
+        }
+
+        log.info("MCP HTTP server '{}' connected successfully", name);
+        return client;
+    }
+
+    /**
+     * 展开字符串中的环境变量引用。
+     * 支持 ${VAR_NAME} 语法，未定义的变量保留原样。
+     *
+     * @param value 包含可能的环境变量引用的字符串
+     * @return 展开后的字符串
+     */
+    static String expandEnvVars(String value) {
+        if (value == null || !value.contains("${")) {
+            return value;
+        }
+
+        StringBuilder result = new StringBuilder();
+        int i = 0;
+        while (i < value.length()) {
+            if (i < value.length() - 2 && value.charAt(i) == '$' && value.charAt(i + 1) == '{') {
+                int end = value.indexOf('}', i + 2);
+                if (end != -1) {
+                    String varName = value.substring(i + 2, end);
+                    String envVal = System.getenv(varName);
+                    if (envVal != null) {
+                        result.append(envVal);
+                    } else {
+                        result.append("${").append(varName).append("}");
+                    }
+                    i = end + 1;
+                } else {
+                    result.append(value.charAt(i));
+                    i++;
+                }
+            } else {
+                result.append(value.charAt(i));
+                i++;
+            }
+        }
+        return result.toString();
     }
 }
