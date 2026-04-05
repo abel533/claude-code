@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.mcp.McpClient;
@@ -47,7 +48,7 @@ public class McpCommand implements SlashCommand {
             return AnsiStyle.red("  ❌ MCP manager not initialized");
         }
 
-        String trimmed = args.strip();
+        String trimmed = CommandUtils.parseArgs(args);
         if (trimmed.isEmpty()) {
             return showStatus(manager);
         }
@@ -72,9 +73,7 @@ public class McpCommand implements SlashCommand {
      */
     private String showStatus(McpManager manager) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🔌 MCP Server Status\n"));
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("🔌", "MCP Server Status"));
 
         Map<String, McpClient> clients = manager.getClients();
         if (clients.isEmpty()) {
@@ -159,7 +158,7 @@ public class McpCommand implements SlashCommand {
                 for (McpClient.McpTool tool : client.getTools()) {
                     sb.append("    • ").append(tool.name());
                     if (!tool.description().isEmpty()) {
-                        sb.append(AnsiStyle.dim(" - " + truncate(tool.description(), 60)));
+                        sb.append(AnsiStyle.dim(" - " + CommandUtils.truncate(tool.description(), 60)));
                     }
                     sb.append("\n");
                 }
@@ -193,9 +192,7 @@ public class McpCommand implements SlashCommand {
      */
     private String handleTools(McpManager manager, String args) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🛠️  MCP Tools\n"));
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("🛠️", "MCP Tools"));
 
         String serverFilter = args.isEmpty() ? null : args.split("\\s+")[0];
 
@@ -220,7 +217,7 @@ public class McpCommand implements SlashCommand {
             }
             if (tool.inputSchema() != null) {
                 sb.append("    ").append(AnsiStyle.dim("Schema: " +
-                        truncate(tool.inputSchema().toString(), 80))).append("\n");
+                        CommandUtils.truncate(tool.inputSchema().toString(), 80))).append("\n");
             }
             sb.append("\n");
         }
@@ -234,9 +231,7 @@ public class McpCommand implements SlashCommand {
      */
     private String handleResources(McpManager manager, String args) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  📦 MCP Resources\n"));
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("📦", "MCP Resources"));
 
         String serverFilter = args.isEmpty() ? null : args.split("\\s+")[0];
 
@@ -323,14 +318,6 @@ public class McpCommand implements SlashCommand {
                     Project: .mcp.json
                     Global:  ~/.claude-code-java/mcp.json
                 """;
-    }
-
-    /**
-     * 截断字符串。
-     */
-    private static String truncate(String s, int maxLen) {
-        if (s == null) return "";
-        return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
     }
 
     // ========== McpManager 持有者（简单单例，供命令和其他组件访问） ==========

@@ -2,24 +2,18 @@ package com.claudecode.tool.impl;
 
 import com.claudecode.tool.Tool;
 import com.claudecode.tool.ToolContext;
+import com.claudecode.tool.ToolValidator;
+import com.claudecode.tool.util.ProcessExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
-import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Notification 工具 —— 系统通知。
  * <p>
- * 向用户发送系统级通知（桌面弹窗 + 可选声音提示），用于：
- * <ul>
- *   <li>长时间任务完成时通知用户</li>
- *   <li>需要用户注意的错误或警告</li>
- *   <li>Agent 需要用户输入时的提醒</li>
- * </ul>
- * <p>
- * 底层使用 Java AWT SystemTray (桌面环境) 或退回到 BEL 字符（终端环境）。
+ * 向用户发送系统级通知（桌面弹窗 + 可选声音提示）。
  */
 public class NotificationTool implements Tool {
 
@@ -76,24 +70,21 @@ public class NotificationTool implements Tool {
 
     @Override
     public String execute(Map<String, Object> input, ToolContext context) {
-        String title = (String) input.get("title");
-        String message = (String) input.get("message");
-        String level = (String) input.getOrDefault("level", "info");
-        Boolean sound = (Boolean) input.getOrDefault("sound", true);
+        String err = ToolValidator.requireString(input, "title");
+        if (err != null) return err;
+        err = ToolValidator.requireString(input, "message");
+        if (err != null) return err;
 
-        if (title == null || message == null) {
-            return "Error: 'title' and 'message' are required";
-        }
+        String title = input.get("title").toString();
+        String message = input.get("message").toString();
+        String level = ToolValidator.getString(input, "level", "info");
+        boolean sound = ToolValidator.getBoolean(input, "sound", true);
 
-        // Truncate title if too long
-        if (title.length() > 80) {
-            title = title.substring(0, 77) + "...";
-        }
+        title = title.length() > 80 ? title.substring(0, 77) + "..." : title;
 
         boolean sent = false;
         String method = "none";
 
-        // Try OS-specific notification
         String os = System.getProperty("os.name", "").toLowerCase();
         try {
             if (os.contains("win")) {
@@ -110,71 +101,43 @@ public class NotificationTool implements Tool {
             log.debug("OS notification failed: {}", e.getMessage());
         }
 
-        // Fallback: terminal bell
-        if (Boolean.TRUE.equals(sound)) {
-            System.out.print('\u0007'); // BEL character
+        if (sound) {
+            System.out.print('\u0007');
             System.out.flush();
         }
 
         if (!sent) {
-            // Fallback: just print to terminal
-            String icon = switch (level) {
-                case "warning" -> "⚠️";
-                case "error" -> "❌";
-                default -> "ℹ️";
-            };
             method = "terminal";
-            sent = true;
         }
 
         return String.format("Notification sent via %s: [%s] %s - %s", method, level, title, message);
     }
 
     private boolean notifyWindows(String title, String message) {
-        try {
-            // Use PowerShell to send Windows toast notification
-            String ps = String.format(
-                    "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; " +
-                    "$n = New-Object System.Windows.Forms.NotifyIcon; " +
-                    "$n.Icon = [System.Drawing.SystemIcons]::Information; " +
-                    "$n.Visible = $true; " +
-                    "$n.ShowBalloonTip(5000, '%s', '%s', 'Info'); " +
-                    "Start-Sleep -Seconds 1; $n.Dispose()",
-                    title.replace("'", "''"), message.replace("'", "''"));
-
-            ProcessBuilder pb = new ProcessBuilder("powershell", "-NoProfile", "-Command", ps);
-            pb.inheritIO();
-            Process proc = pb.start();
-            return proc.waitFor() == 0;
-        } catch (Exception e) {
-            log.debug("Windows notification failed: {}", e.getMessage());
-            return false;
-        }
+        String ps = String.format(
+                "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; " +
+                "$n = New-Object System.Windows.Forms.NotifyIcon; " +
+                "$n.Icon = [System.Drawing.SystemIcons]::Information; " +
+                "$n.Visible = $true; " +
+                "$n.ShowBalloonTip(5000, '%s', '%s', 'Info'); " +
+                "Start-Sleep -Seconds 1; $n.Dispose()",
+                title.replace("'", "''"), message.replace("'", "''"));
+        var result = ProcessExecutor.execute(
+                List.of("powershell", "-NoProfile", "-Command", ps), null, 10000);
+        return result.isSuccess();
     }
 
     private boolean notifyMac(String title, String message) {
-        try {
-            String script = String.format(
-                    "display notification \"%s\" with title \"%s\"",
-                    message.replace("\"", "\\\""), title.replace("\"", "\\\""));
-            ProcessBuilder pb = new ProcessBuilder("osascript", "-e", script);
-            Process proc = pb.start();
-            return proc.waitFor() == 0;
-        } catch (Exception e) {
-            log.debug("macOS notification failed: {}", e.getMessage());
-            return false;
-        }
+        String script = String.format(
+                "display notification \"%s\" with title \"%s\"",
+                message.replace("\"", "\\\""), title.replace("\"", "\\\""));
+        var result = ProcessExecutor.execute(List.of("osascript", "-e", script), null, 5000);
+        return result.isSuccess();
     }
 
     private boolean notifyLinux(String title, String message) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("notify-send", title, message);
-            Process proc = pb.start();
-            return proc.waitFor() == 0;
-        } catch (Exception e) {
-            log.debug("Linux notification failed: {}", e.getMessage());
-            return false;
-        }
+        var result = ProcessExecutor.execute(List.of("notify-send", title, message), null, 5000);
+        return result.isSuccess();
     }
 
     @Override

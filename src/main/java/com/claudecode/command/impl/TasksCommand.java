@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.core.TaskManager;
@@ -38,7 +39,7 @@ public class TasksCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         List<TaskInfo> tasks;
-        String filter = (args == null) ? "" : args.strip();
+        String filter = CommandUtils.parseArgs(args);
 
         // Optional status filter
         if (!filter.isEmpty()) {
@@ -59,7 +60,7 @@ public class TasksCommand implements SlashCommand {
 
         StringBuilder sb = new StringBuilder();
         sb.append("\n  ").append(AnsiStyle.bold("📋 Tasks")).append(" (").append(tasks.size()).append(")\n");
-        sb.append("  ").append("─".repeat(60)).append("\n");
+        sb.append(CommandUtils.separator(60)).append("\n");
 
         for (TaskInfo task : tasks) {
             String icon = switch (task.status()) {
@@ -84,30 +85,21 @@ public class TasksCommand implements SlashCommand {
                     .append(task.description()).append("\n");
 
             // Time info
-            String age = formatDuration(Duration.between(task.createdAt(), Instant.now()));
+            String age = CommandUtils.formatDuration(Duration.between(task.createdAt(), Instant.now()).toSeconds());
             sb.append("     ").append(AnsiStyle.dim("Created " + age + " ago"));
 
             // Result preview for completed/failed
             if (task.result() != null) {
-                String preview = task.result().length() > 60
-                        ? task.result().substring(0, 57) + "..."
-                        : task.result();
+                String preview = CommandUtils.truncate(task.result(), 60);
                 sb.append("  ").append(AnsiStyle.dim("→ " + preview));
             }
             sb.append("\n");
         }
 
         // Summary
-        sb.append("  ").append("─".repeat(60)).append("\n");
+        sb.append(CommandUtils.separator(60)).append("\n");
         sb.append("  ").append(AnsiStyle.dim(taskManager.getSummary())).append("\n");
 
         return sb.toString();
-    }
-
-    private String formatDuration(Duration d) {
-        if (d.toMinutes() < 1) return d.toSeconds() + "s";
-        if (d.toHours() < 1) return d.toMinutes() + "m";
-        if (d.toDays() < 1) return d.toHours() + "h";
-        return d.toDays() + "d";
     }
 }

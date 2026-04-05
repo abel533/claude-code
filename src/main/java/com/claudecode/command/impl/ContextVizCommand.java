@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.core.TokenEstimationService;
@@ -24,8 +25,7 @@ public class ContextVizCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n").append(AnsiStyle.bold("  📊 Context Window Visualization\n"));
-        sb.append("  ").append("─".repeat(45)).append("\n\n");
+        sb.append(CommandUtils.header("📊", "Context Window Visualization"));
 
         if (context.agentLoop() == null) {
             return sb.append("  No active agent loop\n").toString();

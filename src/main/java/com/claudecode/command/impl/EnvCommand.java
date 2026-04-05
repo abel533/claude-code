@@ -1,11 +1,11 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 
 import java.io.File;
-import java.lang.management.ManagementFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -23,32 +23,28 @@ public class EnvCommand implements SlashCommand {
 
     @Override
     public String execute(String args, CommandContext context) {
-        String trimmed = (args == null) ? "" : args.trim();
+        String trimmed = CommandUtils.parseArgs(args);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("\n").append(AnsiStyle.bold("  🔧 Environment\n"));
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("🔧", "Environment"));
 
-        // System info
-        sb.append(AnsiStyle.bold("  System\n"));
+        sb.append(CommandUtils.subtitle("System")).append("\n");
         sb.append("  OS:       ").append(System.getProperty("os.name")).append(" ")
                 .append(System.getProperty("os.version")).append("\n");
         sb.append("  Java:     ").append(System.getProperty("java.version"))
                 .append(" (").append(System.getProperty("java.vendor")).append(")\n");
         sb.append("  JVM:      ").append(System.getProperty("java.vm.name")).append("\n");
-        sb.append("  Heap:     ").append(formatBytes(Runtime.getRuntime().totalMemory()))
-                .append(" / ").append(formatBytes(Runtime.getRuntime().maxMemory())).append("\n");
+        sb.append("  Heap:     ").append(CommandUtils.formatBytes(Runtime.getRuntime().totalMemory()))
+                .append(" / ").append(CommandUtils.formatBytes(Runtime.getRuntime().maxMemory())).append("\n");
         sb.append("  PID:      ").append(ProcessHandle.current().pid()).append("\n\n");
 
-        // Work directory
-        sb.append(AnsiStyle.bold("  Paths\n"));
+        sb.append(CommandUtils.subtitle("Paths")).append("\n");
         sb.append("  WorkDir:  ").append(System.getProperty("user.dir")).append("\n");
         sb.append("  Home:     ").append(System.getProperty("user.home")).append("\n");
         sb.append("  Config:   ").append(System.getProperty("user.home"))
                 .append(File.separator).append(".claude-code-java").append("\n\n");
 
-        // Relevant env vars
-        sb.append(AnsiStyle.bold("  Environment Variables\n"));
+        sb.append(CommandUtils.subtitle("Environment Variables")).append("\n");
         List<String> relevantVars = List.of(
                 "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CLAUDE_CODE_",
                 "JAVA_HOME", "PATH", "SHELL", "TERM", "EDITOR"
@@ -57,24 +53,14 @@ public class EnvCommand implements SlashCommand {
         Map<String, String> env = new TreeMap<>(System.getenv());
         for (Map.Entry<String, String> entry : env.entrySet()) {
             String key = entry.getKey();
-            boolean show = false;
-            for (String prefix : relevantVars) {
-                if (key.startsWith(prefix) || key.equals(prefix)) {
-                    show = true;
-                    break;
-                }
-            }
+            boolean show = relevantVars.stream().anyMatch(p -> key.startsWith(p) || key.equals(p));
             if (!show && !trimmed.equals("all")) continue;
 
             String value = entry.getValue();
-            // Mask secrets
             if (key.contains("KEY") || key.contains("SECRET") || key.contains("TOKEN")) {
                 value = value.length() > 8 ? value.substring(0, 4) + "****" + value.substring(value.length() - 4) : "****";
             }
-            // Truncate long values
-            if (value.length() > 80) {
-                value = value.substring(0, 77) + "...";
-            }
+            value = CommandUtils.truncate(value, 80);
             sb.append("  ").append(AnsiStyle.cyan(key)).append("=").append(value).append("\n");
         }
 
@@ -83,11 +69,5 @@ public class EnvCommand implements SlashCommand {
         }
 
         return sb.toString();
-    }
-
-    private String formatBytes(long bytes) {
-        if (bytes >= 1_073_741_824) return String.format("%.1fGB", bytes / 1_073_741_824.0);
-        if (bytes >= 1_048_576) return String.format("%.0fMB", bytes / 1_048_576.0);
-        return String.format("%.0fKB", bytes / 1_024.0);
     }
 }

@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 
@@ -20,11 +21,10 @@ public class SandboxCommand implements SlashCommand {
 
     @Override
     public String execute(String args, CommandContext context) {
-        String trimmed = (args == null) ? "" : args.trim();
+        String trimmed = CommandUtils.parseArgs(args);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("\n").append(AnsiStyle.bold("  🏖 Sandbox Mode\n"));
-        sb.append("  ").append("─".repeat(40)).append("\n\n");
+        sb.append(CommandUtils.header("🏖", "Sandbox Mode"));
 
         if (context.agentLoop() == null) {
             return sb.append("  No active agent loop\n").toString();

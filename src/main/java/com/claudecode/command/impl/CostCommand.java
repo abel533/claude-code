@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.core.TokenTracker;
@@ -29,9 +30,7 @@ public class CostCommand implements SlashCommand {
         int msgCount = context.agentLoop().getMessageHistory().size();
 
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  💰 Token Usage & Cost\n"));
-        sb.append("  ").append("─".repeat(40)).append("\n\n");
+        sb.append(CommandUtils.header("💰", "Token Usage & Cost"));
 
         sb.append("  ").append(AnsiStyle.bold("Model:        ")).append(AnsiStyle.cyan(tracker.getModelName())).append("\n");
         sb.append("  ").append(AnsiStyle.bold("API Calls:    ")).append(tracker.getApiCallCount()).append("\n");
@@ -47,7 +46,7 @@ public class CostCommand implements SlashCommand {
             sb.append("  ").append(AnsiStyle.bold("Cache create: ")).append(formatTokenLine(tracker.getCacheCreationTokens())).append("\n");
         }
 
-        sb.append("  ").append("─".repeat(30)).append("\n");
+        sb.append(CommandUtils.separator(30)).append("\n");
         sb.append("  ").append(AnsiStyle.bold("Total:        ")).append(TokenTracker.formatTokens(tracker.getTotalTokens())).append(" tokens\n");
         sb.append("  ").append(AnsiStyle.bold("Est. Cost:    ")).append(AnsiStyle.green("$" + String.format("%.4f", tracker.estimateCost()))).append("\n");
 

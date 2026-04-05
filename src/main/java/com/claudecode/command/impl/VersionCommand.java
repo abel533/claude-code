@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 
@@ -28,9 +29,7 @@ public class VersionCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🏷️  Claude Code Java\n"));
-        sb.append("  ").append("─".repeat(40)).append("\n\n");
+        sb.append(CommandUtils.header("🏷️", "Claude Code Java"));
 
         sb.append("  ").append(AnsiStyle.bold("Version:      "))
                 .append(AnsiStyle.cyan("v" + VERSION)).append("\n");

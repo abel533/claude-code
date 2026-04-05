@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 
@@ -25,11 +26,10 @@ public class ReleaseNotesCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n").append(AnsiStyle.bold("  📋 Release Notes\n"));
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("📋", "Release Notes"));
 
         sb.append(AnsiStyle.bold("  v0.4.0 — Phase 4: Commands, Tools & Services\n"));
-        sb.append("  ").append("─".repeat(45)).append("\n");
+        sb.append(CommandUtils.separator(45)).append("\n");
         sb.append("  • LSPTool: code navigation via Language Server Protocol\n");
         sb.append("  • BriefTool: output verbosity control\n");
         sb.append("  • NotificationTool: cross-platform desktop notifications\n");
@@ -38,7 +38,7 @@ public class ReleaseNotesCommand implements SlashCommand {
         sb.append("  • Debug commands: /debug, /heapdump, /trace, /ctx-viz\n\n");
 
         sb.append(AnsiStyle.bold("  v0.3.0 — Phase 3: Advanced Infrastructure\n"));
-        sb.append("  ").append("─".repeat(45)).append("\n");
+        sb.append(CommandUtils.separator(45)).append("\n");
         sb.append("  • Server Mode: WebSocket direct connect for SDK integration\n");
         sb.append("  • Git Worktree: parallel branch isolation for agent tasks\n");
         sb.append("  • LSP Integration: JSON-RPC client, multi-server, diagnostics\n");
@@ -46,7 +46,7 @@ public class ReleaseNotesCommand implements SlashCommand {
         sb.append("  • Plugin Marketplace: install, search, auto-update plugins\n\n");
 
         sb.append(AnsiStyle.bold("  v0.2.0 — Phase 2: Core Features\n"));
-        sb.append("  ").append("─".repeat(45)).append("\n");
+        sb.append(CommandUtils.separator(45)).append("\n");
         sb.append("  • Plan Mode for multi-step task planning\n");
         sb.append("  • Skills execution system with /skill command\n");
         sb.append("  • Session Memory with CLAUDE.md auto-persist\n");
@@ -54,7 +54,7 @@ public class ReleaseNotesCommand implements SlashCommand {
         sb.append("  • MCP enhancements: HTTP+SSE, resources, env vars\n\n");
 
         sb.append(AnsiStyle.bold("  v0.1.0 — Phase 1: Foundation\n"));
-        sb.append("  ").append("─".repeat(45)).append("\n");
+        sb.append(CommandUtils.separator(45)).append("\n");
         sb.append("  • Enhanced system prompts (7 security/style sections)\n");
         sb.append("  • 8 tool description improvements\n");
         sb.append("  • New tools: TaskStop, TaskOutput, Sleep, ToolSearch\n");

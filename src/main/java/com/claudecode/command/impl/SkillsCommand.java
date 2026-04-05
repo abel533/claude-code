@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.context.SkillLoader;
@@ -50,9 +51,7 @@ public class SkillsCommand implements SlashCommand {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🎯 Available Skills\n"));
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("🎯", "Available Skills"));
 
         if (skills.isEmpty()) {
             sb.append(AnsiStyle.dim("  (No available skills)\n\n"));
@@ -90,9 +89,7 @@ public class SkillsCommand implements SlashCommand {
 
     private String formatSkillDetail(SkillLoader.Skill skill) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🎯 Skill: " + skill.name())).append("\n");
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("🎯", "Skill: " + skill.name()));
 
         sb.append("  ").append(AnsiStyle.bold("Source: ")).append(skill.source()).append("\n");
         if (!skill.description().isEmpty()) {
@@ -106,9 +103,7 @@ public class SkillsCommand implements SlashCommand {
 
         // Show content preview
         String content = skill.content();
-        if (content.length() > 500) {
-            content = content.substring(0, 497) + "...";
-        }
+        content = CommandUtils.truncate(content, 500);
         sb.append(AnsiStyle.dim("  Content:\n"));
         for (String line : content.lines().toList()) {
             sb.append(AnsiStyle.dim("  │ " + line)).append("\n");

@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.plugin.*;
@@ -55,7 +56,7 @@ public class PluginCommand implements SlashCommand {
             return AnsiStyle.red("  ✗ Plugin system not initialized");
         }
 
-        String trimmed = (args == null) ? "" : args.trim();
+        String trimmed = CommandUtils.parseArgs(args);
 
         // 无参数：列出所有插件
         if (trimmed.isEmpty()) {
@@ -87,9 +88,7 @@ public class PluginCommand implements SlashCommand {
     private String listPlugins(PluginManager manager) {
         List<PluginInfo> plugins = manager.getPlugins();
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🔌 Loaded Plugins")).append("\n");
-        sb.append("  ").append("─".repeat(50)).append("\n\n");
+        sb.append(CommandUtils.header("🔌", "Loaded Plugins"));
 
         if (plugins.isEmpty()) {
             sb.append(AnsiStyle.dim("  No plugins loaded.")).append("\n");
@@ -174,9 +173,7 @@ public class PluginCommand implements SlashCommand {
 
         Plugin p = info.plugin();
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  🔌 Plugin Details")).append("\n");
-        sb.append("  ").append("─".repeat(40)).append("\n\n");
+        sb.append(CommandUtils.header("🔌", "Plugin Details"));
 
         sb.append("  ").append(AnsiStyle.bold("Name:        ")).append(p.name()).append("\n");
         sb.append("  ").append(AnsiStyle.bold("ID:          ")).append(AnsiStyle.cyan(p.id())).append("\n");

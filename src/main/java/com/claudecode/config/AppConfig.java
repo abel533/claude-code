@@ -1,7 +1,6 @@
 package com.claudecode.config;
 
 import com.claudecode.command.CommandRegistry;
-import com.claudecode.command.impl.*;
 import com.claudecode.context.ClaudeMdLoader;
 import com.claudecode.context.GitContext;
 import com.claudecode.context.SkillLoader;
@@ -21,7 +20,8 @@ import com.claudecode.repl.ReplSession;
 import com.claudecode.tui.JinkReplSession;
 import com.claudecode.tool.ToolContext;
 import com.claudecode.tool.ToolRegistry;
-import com.claudecode.tool.impl.*;
+import com.claudecode.tool.impl.AgentTool;
+import com.claudecode.tool.impl.SkillTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatModel;
@@ -31,6 +31,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+
+/**
+ * 核心应用配置 —— 基础设施 Bean 和跨切关注点。
+ * <p>
+ * 工具注册见 {@link ToolConfiguration}，
+ * 命令注册见 {@link CommandConfiguration}。
+ */
 
 /**
  * 应用配置类 —— Spring Bean 装配。
@@ -77,144 +84,6 @@ public class AppConfig {
         // 加载外部插件
         manager.loadAll();
         return manager;
-    }
-
-    @Bean
-    public ToolRegistry toolRegistry(TaskManager taskManager, McpManager mcpManager,
-                                     ToolContext toolContext, PermissionSettings permissionSettings) {
-        // 将 TaskManager 和 McpManager 注册到 ToolContext 供工具使用
-        toolContext.set("TASK_MANAGER", taskManager);
-        toolContext.set("MCP_MANAGER", mcpManager);
-        toolContext.set("PERMISSION_SETTINGS", permissionSettings);
-
-        ToolRegistry registry = new ToolRegistry();
-        registry.registerAll(
-                new BashTool(),
-                new FileReadTool(),
-                new FileWriteTool(),
-                new FileEditTool(),
-                new GlobTool(),
-                new GrepTool(),
-                new ListFilesTool(),
-                new WebFetchTool(),
-                new TodoWriteTool(),
-                new AgentTool(),
-                new NotebookEditTool(),
-                new WebSearchTool(),
-                new AskUserQuestionTool(),
-                // P2: 任务管理工具
-                new TaskCreateTool(),
-                new TaskGetTool(),
-                new TaskListTool(),
-                new TaskUpdateTool(),
-                new TaskStopTool(),
-                new TaskOutputTool(),
-                // P2: 配置工具
-                new ConfigTool(),
-                // P2: 实用工具
-                new SleepTool(),
-                new ToolSearchTool(),
-                new EnterPlanModeTool(),
-                new ExitPlanModeTool(),
-                new SkillTool(),
-                new SendMessageTool(),
-                new ListMcpResourcesTool(),
-                new ReadMcpResourceTool(),
-                new EnterWorktreeTool(),
-                new ExitWorktreeTool(),
-                // P4: 新工具
-                new LSPTool(),
-                new BriefTool(),
-                new NotificationTool()
-        );
-
-        // P2: 注册 MCP 工具桥接（将远程 MCP 工具映射为本地工具）
-        for (var client : mcpManager.getClients().values()) {
-            for (var mcpTool : client.getTools()) {
-                registry.register(new McpToolBridge(client.getServerName(), mcpTool));
-            }
-        }
-
-        // 将 ToolRegistry 注入 ToolContext，供 ToolSearchTool 使用
-        toolContext.set("TOOL_REGISTRY", registry);
-
-        return registry;
-    }
-
-    @Bean
-    public CommandRegistry commandRegistry(PluginManager pluginManager, PermissionSettings permissionSettings,
-                                           TaskManager taskManager) {
-        ConfigCommand configCommand = new ConfigCommand(permissionSettings);
-        CommandRegistry registry = new CommandRegistry();
-        registry.registerAll(
-                // 基础命令
-                new HelpCommand(),
-                new ClearCommand(),
-                new CompactCommand(),
-                new CostCommand(),
-                new ModelCommand(),
-                new StatusCommand(),
-                new ContextCommand(),
-                new InitCommand(),
-                configCommand,
-                new HistoryCommand(),
-                // P0 命令
-                new DiffCommand(),
-                new VersionCommand(),
-                new SkillsCommand(),
-                new MemoryCommand(),
-                new CopyCommand(),
-                // P1 命令
-                new ResumeCommand(),
-                new ExportCommand(),
-                new CommitCommand(),
-                new FilesCommand(),
-                new PermissionsCommand(permissionSettings),
-                new TasksCommand(taskManager),
-                new PlanCommand(permissionSettings),
-                // P2 命令
-                new HooksCommand(),
-                new ReviewCommand(),
-                new StatsCommand(),
-                new BranchCommand(),
-                new RewindCommand(),
-                new TagCommand(),
-                new SecurityReviewCommand(),
-                new McpCommand(),
-                new PluginCommand(),
-                // Phase 2F 命令
-                new DoctorCommand(),
-                new SessionCommand(),
-                new AgentCommand(),
-                new RenameCommand(),
-                // Phase 4B 命令
-                new BriefCommand(),
-                new VimCommand(),
-                new ThemeCommand(),
-                new UsageCommand(),
-                new TipsCommand(),
-                new OutputStyleCommand(),
-                new EnvCommand(),
-                new PerformanceCommand(),
-                new PrivacyCommand(),
-                new FeedbackCommand(),
-                new ReleaseNotesCommand(),
-                new KeybindingsCommand(),
-                // Phase 4D 调试命令
-                new DebugCommand(),
-                new HeapdumpCommand(),
-                new TraceCommand(),
-                new ContextVizCommand(),
-                new ResetLimitsCommand(),
-                new SandboxCommand(),
-                // Exit 放最后
-                new ExitCommand()
-        );
-
-        // P2: 注册插件提供的命令
-        pluginManager.registerCommands(registry);
-
-        return registry;
     }
 
     /**

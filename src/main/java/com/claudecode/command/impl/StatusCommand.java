@@ -1,6 +1,7 @@
 package com.claudecode.command.impl;
 
 import com.claudecode.command.CommandContext;
+import com.claudecode.command.CommandUtils;
 import com.claudecode.command.SlashCommand;
 import com.claudecode.console.AnsiStyle;
 import com.claudecode.core.TokenTracker;
@@ -31,9 +32,7 @@ public class StatusCommand implements SlashCommand {
     @Override
     public String execute(String args, CommandContext context) {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n");
-        sb.append(AnsiStyle.bold("  📊 Session Status\n"));
-        sb.append("  ").append("─".repeat(40)).append("\n\n");
+        sb.append(CommandUtils.header("📊", "Session Status"));
 
         // 模型信息
         TokenTracker tracker = context.agentLoop().getTokenTracker();
@@ -68,7 +67,7 @@ public class StatusCommand implements SlashCommand {
 
         // 运行时间
         Duration uptime = Duration.between(startTime, Instant.now());
-        sb.append("  ").append(AnsiStyle.bold("Uptime:   ")).append(formatDuration(uptime)).append("\n");
+        sb.append("  ").append(AnsiStyle.bold("Uptime:   ")).append(CommandUtils.formatDuration(uptime.toSeconds())).append("\n");
 
         // Java 版本
         sb.append("  ").append(AnsiStyle.bold("JDK:      ")).append(System.getProperty("java.version")).append("\n");
@@ -76,12 +75,5 @@ public class StatusCommand implements SlashCommand {
         return sb.toString();
     }
 
-    private String formatDuration(Duration d) {
-        long hours = d.toHours();
-        long minutes = d.toMinutesPart();
-        long seconds = d.toSecondsPart();
-        if (hours > 0) return String.format("%dh %dm %ds", hours, minutes, seconds);
-        if (minutes > 0) return String.format("%dm %ds", minutes, seconds);
-        return String.format("%ds", seconds);
-    }
+
 }
