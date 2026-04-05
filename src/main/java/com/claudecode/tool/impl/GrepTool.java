@@ -4,7 +4,6 @@ import com.claudecode.tool.Tool;
 import com.claudecode.tool.ToolContext;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -16,10 +15,11 @@ import java.util.concurrent.TimeUnit;
  * Grep 搜索工具 —— 对应 claude-code/src/tools/grep/GrepTool.ts。
  * <p>
  * 在文件中搜索文本模式（正则），优先使用 ripgrep（rg），降级为系统 grep。
+ * 支持多种输出模式、大小写、上下文行、多行匹配等参数。
  */
 public class GrepTool implements Tool {
 
-    private static final int MAX_RESULTS = 100;
+    private static final int DEFAULT_MAX_RESULTS = 100;
 
     @Override
     public String name() {
@@ -37,10 +37,14 @@ public class GrepTool implements Tool {
             better understand and review your searches.
 
             Uses ripgrep (rg) if available, falls back to system grep/findstr. Supports full regex \
-            syntax. Use the 'include' parameter to filter by file type (e.g., '*.java', '*.ts').
+            syntax. Pattern syntax uses ripgrep — literal braces need escaping (e.g., interface\\{\\}).
 
-            When you are doing an open-ended search that may require multiple rounds of searching, \
-            consider using the Agent tool instead to keep the main context clean.""";
+            Output modes:
+            - "content": Shows matching lines with context (default). Supports context flags.
+            - "files_with_matches": Shows only file paths containing matches. Use for broad discovery.
+            - "count": Shows match counts per file.
+
+            When doing open-ended searches requiring multiple rounds, use the Agent tool instead.""";
     }
 
     @Override
@@ -60,6 +64,35 @@ public class GrepTool implements Tool {
                 "include": {
                   "type": "string",
                   "description": "File glob pattern to include (e.g., '*.java')"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "File type filter (e.g., 'java', 'py', 'ts', 'js'). Only works with ripgrep."
+                },
+                "output_mode": {
+                  "type": "string",
+                  "enum": ["content", "files_with_matches", "count"],
+                  "description": "Output format. 'content' shows matching lines (default), 'files_with_matches' shows only file paths, 'count' shows match counts per file."
+                },
+                "case_insensitive": {
+                  "type": "boolean",
+                  "description": "Case insensitive search (default: false)"
+                },
+                "multiline": {
+                  "type": "boolean",
+                  "description": "Enable multiline mode where patterns can span lines (default: false)"
+                },
+                "context_before": {
+                  "type": "integer",
+                  "description": "Lines of context before each match"
+                },
+                "context_after": {
+                  "type": "integer",
+                  "description": "Lines of context after each match"
+                },
+                "head_limit": {
+                  "type": "integer",
+                  "description": "Limit output to first N results"
                 }
               },
               "required": ["pattern"]
@@ -76,10 +109,20 @@ public class GrepTool implements Tool {
         String pattern = (String) input.get("pattern");
         String searchPath = (String) input.getOrDefault("path", ".");
         String include = (String) input.getOrDefault("include", null);
+        String type = (String) input.getOrDefault("type", null);
+        String outputMode = (String) input.getOrDefault("output_mode", "content");
+        boolean caseInsensitive = Boolean.TRUE.equals(input.get("case_insensitive"));
+        boolean multiline = Boolean.TRUE.equals(input.get("multiline"));
+        Integer contextBefore = getInt(input, "context_before");
+        Integer contextAfter = getInt(input, "context_after");
+        int headLimit = getInt(input, "head_limit") != null
+                ? getInt(input, "head_limit") : DEFAULT_MAX_RESULTS;
+
         Path baseDir = context.getWorkDir().resolve(searchPath).normalize();
 
         try {
-            List<String> cmd = buildCommand(pattern, baseDir.toString(), include);
+            List<String> cmd = buildCommand(pattern, baseDir.toString(), include, type,
+                    outputMode, caseInsensitive, multiline, contextBefore, contextAfter);
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.directory(context.getWorkDir().toFile());
             pb.redirectErrorStream(true);
@@ -89,7 +132,7 @@ public class GrepTool implements Tool {
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
-                while ((line = reader.readLine()) != null && lines.size() < MAX_RESULTS) {
+                while ((line = reader.readLine()) != null && lines.size() < headLimit) {
                     lines.add(line);
                 }
             }
@@ -104,8 +147,8 @@ public class GrepTool implements Tool {
             for (String line : lines) {
                 sb.append(line).append("\n");
             }
-            if (lines.size() >= MAX_RESULTS) {
-                sb.append("... (results truncated at ").append(MAX_RESULTS).append(")\n");
+            if (lines.size() >= headLimit) {
+                sb.append("... (results truncated at ").append(headLimit).append(")\n");
             }
             return sb.toString().stripTrailing();
 
@@ -115,28 +158,66 @@ public class GrepTool implements Tool {
     }
 
     /** 构建搜索命令（优先 rg，降级 grep/findstr） */
-    private List<String> buildCommand(String pattern, String path, String include) {
+    private List<String> buildCommand(String pattern, String path, String include,
+                                       String type, String outputMode, boolean caseInsensitive,
+                                       boolean multiline, Integer contextBefore, Integer contextAfter) {
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
         List<String> cmd = new ArrayList<>();
 
-        // 尝试 ripgrep
         if (isCommandAvailable("rg")) {
             cmd.add("rg");
             cmd.add("--no-heading");
-            cmd.add("--line-number");
             cmd.add("--color=never");
-            cmd.add("--max-count=100");
+
+            // Output mode
+            switch (outputMode) {
+                case "files_with_matches" -> cmd.add("--files-with-matches");
+                case "count" -> cmd.add("--count");
+                default -> cmd.add("--line-number");
+            }
+
+            // Case insensitive
+            if (caseInsensitive) {
+                cmd.add("--ignore-case");
+            }
+
+            // Multiline
+            if (multiline) {
+                cmd.add("--multiline");
+            }
+
+            // Context lines (only for content mode)
+            if ("content".equals(outputMode)) {
+                if (contextBefore != null) {
+                    cmd.add("--before-context=" + contextBefore);
+                }
+                if (contextAfter != null) {
+                    cmd.add("--after-context=" + contextAfter);
+                }
+            }
+
+            // File type filter
+            if (type != null) {
+                cmd.add("--type=" + type);
+            }
+
+            // Include glob
             if (include != null) {
                 cmd.add("--glob=" + include);
             }
+
             cmd.add(pattern);
             cmd.add(path);
+
         } else if (isWindows) {
-            // Windows 降级到 findstr（功能有限）
+            // Windows fallback: findstr (limited functionality)
             cmd.add("findstr");
             cmd.add("/s");
             cmd.add("/n");
             cmd.add("/r");
+            if (caseInsensitive) {
+                cmd.add("/i");
+            }
             cmd.add(pattern);
             if (include != null) {
                 cmd.add(path + "\\" + include);
@@ -144,9 +225,30 @@ public class GrepTool implements Tool {
                 cmd.add(path + "\\*");
             }
         } else {
+            // Unix fallback: grep
             cmd.add("grep");
             cmd.add("-rn");
             cmd.add("--color=never");
+
+            if (caseInsensitive) {
+                cmd.add("-i");
+            }
+
+            if ("files_with_matches".equals(outputMode)) {
+                cmd.add("-l");
+            } else if ("count".equals(outputMode)) {
+                cmd.add("-c");
+            }
+
+            if ("content".equals(outputMode)) {
+                if (contextBefore != null) {
+                    cmd.add("-B" + contextBefore);
+                }
+                if (contextAfter != null) {
+                    cmd.add("-A" + contextAfter);
+                }
+            }
+
             if (include != null) {
                 cmd.add("--include=" + include);
             }
@@ -155,6 +257,14 @@ public class GrepTool implements Tool {
         }
 
         return cmd;
+    }
+
+    private static Integer getInt(Map<String, Object> input, String key) {
+        Object val = input.get(key);
+        if (val instanceof Number n) {
+            return n.intValue();
+        }
+        return null;
     }
 
     private boolean isCommandAvailable(String command) {
