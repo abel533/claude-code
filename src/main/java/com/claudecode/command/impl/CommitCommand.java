@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
  *   <li>/commit —— 自动生成 AI commit message（基于 git diff）</li>
  *   <li>/commit [message] —— 使用指定的 commit message</li>
  *   <li>/commit --all —— 添加所有文件并提交</li>
+ *   <li>/commit --push —— 提交后自动 push 到远程</li>
+ *   <li>/commit --pr —— 提交 + push + 创建 PR（使用 gh CLI）</li>
  * </ul>
  */
 public class CommitCommand implements SlashCommand {
@@ -29,7 +31,7 @@ public class CommitCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Create a git commit (with optional AI-generated message)";
+        return "Create a git commit. Options: --all, --push, --pr";
     }
 
     @Override
@@ -43,9 +45,11 @@ public class CommitCommand implements SlashCommand {
 
         try {
             boolean addAll = args.contains("--all") || args.contains("-a");
-            String message = args.replaceAll("--all|-a", "").strip();
+            boolean push = args.contains("--push") || args.contains("-p");
+            boolean pr = args.contains("--pr");
+            String message = args.replaceAll("--(all|push|pr)|-[ap]", "").strip();
 
-            // --all 模式：先执行 git add -A
+            // --all: add all files
             if (addAll) {
                 String addResult = runGit(projectDir, "add", "-A");
                 if (addResult == null) {
@@ -53,7 +57,7 @@ public class CommitCommand implements SlashCommand {
                 }
             }
 
-            // 检查是否有已暂存的变更
+            // Check staged changes
             String staged = runGit(projectDir, "diff", "--cached", "--stat");
             if (staged == null || staged.isBlank()) {
                 String status = runGit(projectDir, "status", "--short");
@@ -65,7 +69,7 @@ public class CommitCommand implements SlashCommand {
                 return AnsiStyle.green("  ✓ Working directory clean, nothing to commit");
             }
 
-            // 如果没有指定 message，使用 AI 生成
+            // Generate message if not provided
             if (message.isEmpty()) {
                 message = generateCommitMessage(projectDir, context);
                 if (message == null || message.isBlank()) {
@@ -73,7 +77,7 @@ public class CommitCommand implements SlashCommand {
                 }
             }
 
-            // 执行 git commit
+            // Execute commit
             String commitResult = runGit(projectDir, "commit", "-m", message);
             if (commitResult == null) {
                 return AnsiStyle.red("  ✗ git commit failed");
@@ -83,9 +87,34 @@ public class CommitCommand implements SlashCommand {
             sb.append("\n").append(AnsiStyle.green("  ✓ Commit successful\n"));
             sb.append("  ").append("─".repeat(50)).append("\n");
             sb.append("  ").append(AnsiStyle.bold("Message: ")).append(message).append("\n");
-
-            // 显示提交摘要
             commitResult.lines().forEach(line -> sb.append("  ").append(AnsiStyle.dim(line)).append("\n"));
+
+            // --push: push to remote
+            if (push || pr) {
+                String branch = runGit(projectDir, "rev-parse", "--abbrev-ref", "HEAD");
+                if (branch == null || branch.isBlank()) branch = "HEAD";
+
+                String pushResult = runGit(projectDir, "push", "origin", branch);
+                if (pushResult != null) {
+                    sb.append("\n").append(AnsiStyle.green("  ✓ Pushed to origin/" + branch)).append("\n");
+                } else {
+                    // Try push with --set-upstream for new branches
+                    pushResult = runGit(projectDir, "push", "--set-upstream", "origin", branch);
+                    if (pushResult != null) {
+                        sb.append("\n").append(AnsiStyle.green("  ✓ Pushed to origin/" + branch + " (new branch)")).append("\n");
+                    } else {
+                        sb.append("\n").append(AnsiStyle.red("  ✗ Push failed")).append("\n");
+                        push = false;
+                        pr = false;
+                    }
+                }
+            }
+
+            // --pr: create PR using gh CLI
+            if (pr) {
+                String prResult = createPullRequest(projectDir, message);
+                sb.append(prResult);
+            }
 
             return sb.toString();
 
@@ -94,19 +123,38 @@ public class CommitCommand implements SlashCommand {
         }
     }
 
-    /** 使用 AI 分析 git diff 生成 commit message */
+    private String createPullRequest(Path projectDir, String commitMessage) {
+        // Check if gh CLI is available
+        try {
+            String firstLine = commitMessage.lines().findFirst().orElse(commitMessage);
+            String body = commitMessage.lines().skip(1)
+                    .reduce("", (a, b) -> a + "\n" + b).strip();
+
+            String ghResult = runCommand(projectDir, "gh", "pr", "create",
+                    "--title", firstLine,
+                    "--body", body.isEmpty() ? "Auto-generated PR" : body);
+
+            if (ghResult != null && ghResult.contains("http")) {
+                return "\n" + AnsiStyle.green("  ✓ PR created: ") + AnsiStyle.CYAN + ghResult.strip() + AnsiStyle.RESET + "\n";
+            } else if (ghResult != null) {
+                return "\n" + AnsiStyle.green("  ✓ PR: ") + ghResult.strip() + "\n";
+            }
+        } catch (Exception ignored) {}
+
+        return "\n" + AnsiStyle.yellow("  ⚠ PR creation failed — is 'gh' CLI installed?") + "\n"
+                + AnsiStyle.dim("  Install: https://cli.github.com/\n");
+    }
+
+    /** Use AI to generate commit message from git diff */
     private String generateCommitMessage(Path projectDir, CommandContext context) {
         try {
-            // 获取暂存区的 diff
             String diff = runGit(projectDir, "diff", "--cached");
             if (diff == null || diff.isBlank()) return null;
 
-            // 截断过长的 diff
             if (diff.length() > 4000) {
                 diff = diff.substring(0, 4000) + "\n... (diff truncated)";
             }
 
-            // 使用 ChatModel 生成 commit message
             String prompt = """
                     Analyze the following git diff and generate a concise commit message.
                     Requirements:
@@ -127,7 +175,6 @@ public class CommitCommand implements SlashCommand {
 
             String generated = response.getResult().getOutput().getText();
             if (generated != null) {
-                // 清理：去除可能的引号和多余空行
                 generated = generated.strip()
                         .replaceAll("^[\"'`]+|[\"'`]+$", "")
                         .strip();
@@ -135,18 +182,20 @@ public class CommitCommand implements SlashCommand {
             return generated;
 
         } catch (Exception e) {
-            // AI 生成失败时返回默认消息
             return null;
         }
     }
 
     private String runGit(Path dir, String... args) {
-        try {
-            var command = new java.util.ArrayList<String>();
-            command.add("git");
-            command.add("--no-pager");
-            command.addAll(java.util.List.of(args));
+        var command = new java.util.ArrayList<String>();
+        command.add("git");
+        command.add("--no-pager");
+        command.addAll(java.util.List.of(args));
+        return runCommand(dir, command.toArray(new String[0]));
+    }
 
+    private String runCommand(Path dir, String... command) {
+        try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(dir.toFile());
             pb.redirectErrorStream(true);
@@ -166,7 +215,7 @@ public class CommitCommand implements SlashCommand {
                 return null;
             }
 
-            return output.toString().stripTrailing();
+            return process.exitValue() == 0 ? output.toString().stripTrailing() : null;
         } catch (Exception e) {
             return null;
         }

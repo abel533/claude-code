@@ -16,7 +16,12 @@ import java.util.List;
  * /compact 命令 —— 用 AI 生成摘要来压缩上下文。
  * <p>
  * 对应 claude-code/src/commands/compact.ts。
- * 委托给 FullCompact 执行实际压缩逻辑。
+ * 支持压缩级别和统计显示。
+ * <ul>
+ *   <li>/compact —— 标准压缩</li>
+ *   <li>/compact --stats —— 仅显示统计信息</li>
+ *   <li>/compact --aggressive —— 激进压缩（保留更少上下文）</li>
+ * </ul>
  */
 public class CompactCommand implements SlashCommand {
 
@@ -27,7 +32,7 @@ public class CompactCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Compact conversation context with AI summary";
+        return "Compact conversation context. Use --stats for info, --aggressive for deeper compaction.";
     }
 
     @Override
@@ -36,17 +41,27 @@ public class CompactCommand implements SlashCommand {
             return AnsiStyle.yellow("  ⚠ No active conversation to compact.");
         }
 
+        String argStr = (args == null) ? "" : args.strip();
+
+        // --stats: only show statistics
+        if (argStr.equals("--stats") || argStr.equals("-s")) {
+            return showStats(context);
+        }
+
+        boolean aggressive = argStr.equals("--aggressive") || argStr.equals("-a");
+
         List<Message> history = context.agentLoop().getMessageHistory();
         int before = history.size();
 
         if (before <= 3) {
-            return AnsiStyle.dim("  Context is already small (" + before + " messages), no compaction needed.");
+            return showStats(context) + "\n"
+                    + AnsiStyle.dim("  Context is already small, no compaction needed.");
         }
 
         TokenTracker tracker = context.agentLoop().getTokenTracker();
         long tokensBefore = tracker.getInputTokens() + tracker.getOutputTokens();
 
-        // 优先使用 AutoCompactManager 中的 FullCompact
+        // Use FullCompact from AutoCompactManager
         FullCompact fullCompact;
         AutoCompactManager acm = context.agentLoop().getAutoCompactManager();
         if (acm != null) {
@@ -55,23 +70,37 @@ public class CompactCommand implements SlashCommand {
             fullCompact = new FullCompact(context.agentLoop().getChatModel());
         }
 
-        // 执行全量压缩
-        List<Message> compacted = fullCompact.compact(new ArrayList<>(history));
+        // In aggressive mode, compact more aggressively by keeping fewer messages
+        List<Message> toCompact = new ArrayList<>(history);
+        if (aggressive && toCompact.size() > 5) {
+            // For aggressive mode, only keep the system message and last 2 exchanges
+            List<Message> aggressive_list = new ArrayList<>();
+            // Keep first message (usually system)
+            aggressive_list.add(toCompact.getFirst());
+            // Keep last 4 messages (2 exchanges)
+            int start = Math.max(1, toCompact.size() - 4);
+            aggressive_list.addAll(toCompact.subList(start, toCompact.size()));
+            toCompact = aggressive_list;
+        }
+
+        List<Message> compacted = fullCompact.compact(toCompact);
 
         if (compacted != null) {
             context.agentLoop().replaceHistory(compacted);
             int after = compacted.size();
 
-            // 重置熔断器（手动压缩成功说明 AI 摘要功能正常）
             if (acm != null) {
                 acm.resetCircuitBreaker();
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append(AnsiStyle.green("  ✅ Context compacted")).append("\n");
-            sb.append("  Messages: ").append(before).append(" → ").append(after).append("\n");
+            sb.append(AnsiStyle.green("  ✅ Context compacted")).append(
+                    aggressive ? AnsiStyle.yellow(" (aggressive)") : "").append("\n");
+            sb.append("  ").append("─".repeat(40)).append("\n");
+            sb.append("  Messages: ").append(before).append(" → ").append(after);
+            sb.append(" (").append(String.format("%.0f%%", (1.0 - (double) after / before) * 100)).append(" reduction)\n");
             if (tokensBefore > 0) {
-                sb.append("  Tokens before compaction: ").append(TokenTracker.formatTokens(tokensBefore)).append("\n");
+                sb.append("  Tokens before: ").append(TokenTracker.formatTokens(tokensBefore)).append("\n");
             }
             sb.append(AnsiStyle.dim("  📝 AI summary generated and injected into context"));
             return sb.toString();
@@ -79,5 +108,36 @@ public class CompactCommand implements SlashCommand {
 
         return AnsiStyle.yellow("  ⚠ Compaction failed — AI summary generation failed") + "\n"
                 + AnsiStyle.dim("  The conversation history was not modified.");
+    }
+
+    private String showStats(CommandContext context) {
+        List<Message> history = context.agentLoop().getMessageHistory();
+        TokenTracker tracker = context.agentLoop().getTokenTracker();
+
+        int userMsgs = 0, assistantMsgs = 0, systemMsgs = 0, toolMsgs = 0;
+        for (Message m : history) {
+            if (m instanceof UserMessage) userMsgs++;
+            else if (m instanceof AssistantMessage) assistantMsgs++;
+            else if (m instanceof SystemMessage) systemMsgs++;
+            else toolMsgs++;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n  ").append(AnsiStyle.bold("📊 Context Statistics")).append("\n");
+        sb.append("  ").append("─".repeat(40)).append("\n");
+        sb.append("  Total messages: ").append(history.size()).append("\n");
+        sb.append("    User:      ").append(userMsgs).append("\n");
+        sb.append("    Assistant:  ").append(assistantMsgs).append("\n");
+        sb.append("    System:     ").append(systemMsgs).append("\n");
+        if (toolMsgs > 0) {
+            sb.append("    Tool:       ").append(toolMsgs).append("\n");
+        }
+        sb.append("  ").append("─".repeat(40)).append("\n");
+        sb.append("  Input tokens:  ").append(TokenTracker.formatTokens(tracker.getInputTokens())).append("\n");
+        sb.append("  Output tokens: ").append(TokenTracker.formatTokens(tracker.getOutputTokens())).append("\n");
+        sb.append("  Total tokens:  ").append(TokenTracker.formatTokens(
+                tracker.getInputTokens() + tracker.getOutputTokens())).append("\n");
+
+        return sb.toString();
     }
 }

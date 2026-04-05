@@ -127,7 +127,8 @@ public class AppConfig {
     }
 
     @Bean
-    public CommandRegistry commandRegistry(PluginManager pluginManager, PermissionSettings permissionSettings) {
+    public CommandRegistry commandRegistry(PluginManager pluginManager, PermissionSettings permissionSettings,
+                                           TaskManager taskManager) {
         ConfigCommand configCommand = new ConfigCommand(permissionSettings);
         CommandRegistry registry = new CommandRegistry();
         registry.registerAll(
@@ -152,6 +153,9 @@ public class AppConfig {
                 new ResumeCommand(),
                 new ExportCommand(),
                 new CommitCommand(),
+                new FilesCommand(),
+                new PermissionsCommand(permissionSettings),
+                new TasksCommand(taskManager),
                 // P2 命令
                 new HooksCommand(),
                 new ReviewCommand(),
