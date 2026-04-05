@@ -119,7 +119,9 @@ public class AppConfig {
                 new SkillTool(),
                 new SendMessageTool(),
                 new ListMcpResourcesTool(),
-                new ReadMcpResourceTool()
+                new ReadMcpResourceTool(),
+                new EnterWorktreeTool(),
+                new ExitWorktreeTool()
         );
 
         // P2: 注册 MCP 工具桥接（将远程 MCP 工具映射为本地工具）
