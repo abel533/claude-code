@@ -7,6 +7,7 @@ import com.claudecode.context.GitContext;
 import com.claudecode.context.SkillLoader;
 import com.claudecode.context.SystemPromptBuilder;
 import com.claudecode.core.AgentLoop;
+import com.claudecode.core.CoordinatorMode;
 import com.claudecode.core.SessionMemoryService;
 import com.claudecode.core.TaskManager;
 import com.claudecode.core.TokenTracker;
@@ -115,7 +116,8 @@ public class AppConfig {
                 new ToolSearchTool(),
                 new EnterPlanModeTool(),
                 new ExitPlanModeTool(),
-                new SkillTool()
+                new SkillTool(),
+                new SendMessageTool()
         );
 
         // P2: 注册 MCP 工具桥接（将远程 MCP 工具映射为本地工具）
@@ -267,6 +269,15 @@ public class AppConfig {
 
         // Load existing session memory
         String sessionMemory = sessionMemoryService.getMemoryContent();
+
+        // Check if coordinator mode is enabled
+        if (CoordinatorMode.isCoordinatorMode()) {
+            log.info("Coordinator mode enabled via CLAUDE_CODE_COORDINATOR_MODE env var");
+            // Coordinator uses a specialized system prompt
+            String coordinatorPrompt = CoordinatorMode.getCoordinatorSystemPrompt();
+            String userContext = CoordinatorMode.getCoordinatorUserContext();
+            return coordinatorPrompt + "\n\n" + userContext;
+        }
 
         return new SystemPromptBuilder()
                 .claudeMd(claudeMd)
