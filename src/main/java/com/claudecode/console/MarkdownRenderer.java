@@ -87,10 +87,18 @@ public class MarkdownRenderer {
 
         boolean inCodeBlock = false;
         String codeBlockLang = "";
+        boolean inTable = false;
+        java.util.List<String> tableLines = new java.util.ArrayList<>();
 
         for (String line : markdown.lines().toList()) {
             // 代码块
             if (line.stripLeading().startsWith("```")) {
+                // Flush any pending table
+                if (inTable) {
+                    renderTable(tableLines);
+                    tableLines.clear();
+                    inTable = false;
+                }
                 if (!inCodeBlock) {
                     codeBlockLang = line.stripLeading().substring(3).strip().toLowerCase();
                     inCodeBlock = true;
@@ -110,6 +118,20 @@ public class MarkdownRenderer {
                 continue;
             }
 
+            // Table detection: lines containing | separators
+            String stripped = line.stripLeading();
+            if (stripped.contains("|") && (stripped.startsWith("|") || isTableLine(stripped))) {
+                if (!inTable) {
+                    inTable = true;
+                }
+                tableLines.add(stripped);
+                continue;
+            } else if (inTable) {
+                renderTable(tableLines);
+                tableLines.clear();
+                inTable = false;
+            }
+
             // 标题
             if (line.startsWith("### ")) {
                 out.println(AnsiStyle.bold(AnsiStyle.CYAN + "  " + line.substring(4)) + AnsiStyle.RESET);
@@ -119,12 +141,12 @@ public class MarkdownRenderer {
                 out.println(AnsiStyle.bold(AnsiStyle.MAGENTA + "  " + line.substring(2)) + AnsiStyle.RESET);
             }
             // 引用块
-            else if (line.stripLeading().startsWith("> ")) {
-                String quoteText = line.stripLeading().substring(2);
+            else if (stripped.startsWith("> ")) {
+                String quoteText = stripped.substring(2);
                 out.println("  " + AnsiStyle.DIM + "┃" + AnsiStyle.RESET + " " + AnsiStyle.ITALIC + renderInline(quoteText) + AnsiStyle.RESET);
             }
             // 有序列表
-            else if (line.stripLeading().matches("^\\d+\\.\\s+.*")) {
+            else if (stripped.matches("^\\d+\\.\\s+.*")) {
                 Matcher m = Pattern.compile("^(\\s*)(\\d+)\\.\\s+(.*)").matcher(line);
                 if (m.matches()) {
                     String indent = m.group(1);
@@ -136,19 +158,19 @@ public class MarkdownRenderer {
                 }
             }
             // 无序列表
-            else if (line.stripLeading().startsWith("- ") || line.stripLeading().startsWith("* ")) {
-                int indent = line.length() - line.stripLeading().length();
+            else if (stripped.startsWith("- ") || stripped.startsWith("* ")) {
+                int indent = line.length() - stripped.length();
                 String prefix = " ".repeat(indent);
-                out.println("  " + prefix + AnsiStyle.CYAN + "•" + AnsiStyle.RESET + " " + renderInline(line.stripLeading().substring(2)));
+                out.println("  " + prefix + AnsiStyle.CYAN + "•" + AnsiStyle.RESET + " " + renderInline(stripped.substring(2)));
             }
             // 复选框列表
-            else if (line.stripLeading().startsWith("- [ ] ")) {
-                out.println("  " + AnsiStyle.DIM + "☐" + AnsiStyle.RESET + " " + renderInline(line.stripLeading().substring(6)));
-            } else if (line.stripLeading().startsWith("- [x] ") || line.stripLeading().startsWith("- [X] ")) {
-                out.println("  " + AnsiStyle.GREEN + "☑" + AnsiStyle.RESET + " " + renderInline(line.stripLeading().substring(6)));
+            else if (stripped.startsWith("- [ ] ")) {
+                out.println("  " + AnsiStyle.DIM + "☐" + AnsiStyle.RESET + " " + renderInline(stripped.substring(6)));
+            } else if (stripped.startsWith("- [x] ") || stripped.startsWith("- [X] ")) {
+                out.println("  " + AnsiStyle.GREEN + "☑" + AnsiStyle.RESET + " " + renderInline(stripped.substring(6)));
             }
             // 分隔线
-            else if (line.strip().matches("^[-*]{3,}$")) {
+            else if (stripped.matches("^[-*]{3,}$")) {
                 out.println(AnsiStyle.dim("  " + "─".repeat(42)));
             }
             // 普通文本
@@ -156,6 +178,120 @@ public class MarkdownRenderer {
                 out.println("  " + renderInline(line));
             }
         }
+
+        // Flush any remaining table
+        if (inTable) {
+            renderTable(tableLines);
+        }
+    }
+
+    // ==================== 表格渲染 ====================
+
+    /**
+     * 检测行是否是表格行（包含至少一个 | 且有文本内容）。
+     */
+    private boolean isTableLine(String line) {
+        if (!line.contains("|")) return false;
+        // Separator lines like |---|---|
+        if (line.matches("^\\|?[\\s:-]+\\|[\\s|:-]*$")) return true;
+        // Content lines
+        String[] parts = line.split("\\|");
+        return parts.length >= 2;
+    }
+
+    /**
+     * 渲染 Markdown 表格为对齐的终端输出。
+     * 支持标准 Markdown 表格格式（带/不带首尾 |）。
+     */
+    private void renderTable(java.util.List<String> tableLines) {
+        if (tableLines.isEmpty()) return;
+
+        // Parse all rows
+        var rows = new java.util.ArrayList<String[]>();
+        int separatorIdx = -1;
+
+        for (int i = 0; i < tableLines.size(); i++) {
+            String line = tableLines.get(i).strip();
+            // Remove leading/trailing |
+            if (line.startsWith("|")) line = line.substring(1);
+            if (line.endsWith("|")) line = line.substring(0, line.length() - 1);
+
+            // Check if separator line
+            if (line.matches("[\\s:-]+\\|[\\s|:-]*") || line.matches("[\\s:-]+")) {
+                separatorIdx = i;
+                continue;
+            }
+
+            String[] cells = line.split("\\|");
+            for (int j = 0; j < cells.length; j++) {
+                cells[j] = cells[j].strip();
+            }
+            rows.add(cells);
+        }
+
+        if (rows.isEmpty()) return;
+
+        // Calculate column widths
+        int maxCols = rows.stream().mapToInt(r -> r.length).max().orElse(0);
+        int[] widths = new int[maxCols];
+        for (String[] row : rows) {
+            for (int j = 0; j < row.length && j < maxCols; j++) {
+                widths[j] = Math.max(widths[j], stripAnsi(row[j]).length());
+            }
+        }
+        // Ensure minimum width
+        for (int j = 0; j < widths.length; j++) {
+            widths[j] = Math.max(widths[j], 3);
+        }
+
+        // Render
+        boolean isHeader = true;
+        for (String[] row : rows) {
+            StringBuilder sb = new StringBuilder("  ");
+            if (isHeader) {
+                // Header with bold
+                sb.append("│ ");
+                for (int j = 0; j < maxCols; j++) {
+                    String cell = j < row.length ? row[j] : "";
+                    sb.append(AnsiStyle.bold(padRight(cell, widths[j])));
+                    if (j < maxCols - 1) sb.append(" │ ");
+                }
+                sb.append(" │");
+                out.println(sb);
+
+                // Separator
+                StringBuilder sep = new StringBuilder("  ├─");
+                for (int j = 0; j < maxCols; j++) {
+                    sep.append("─".repeat(widths[j]));
+                    if (j < maxCols - 1) sep.append("─┼─");
+                }
+                sep.append("─┤");
+                out.println(AnsiStyle.dim(sep.toString()));
+                isHeader = false;
+            } else {
+                sb.append("│ ");
+                for (int j = 0; j < maxCols; j++) {
+                    String cell = j < row.length ? row[j] : "";
+                    sb.append(padRight(renderInline(cell), widths[j] + (renderInline(cell).length() - stripAnsi(renderInline(cell)).length())));
+                    if (j < maxCols - 1) sb.append(" │ ");
+                }
+                sb.append(" │");
+                out.println(sb);
+            }
+        }
+    }
+
+    /** Strip ANSI escape codes for width calculation */
+    private String stripAnsi(String s) {
+        return s.replaceAll("\u001B\\[[;\\d]*m", "");
+    }
+
+    /** Pad string to target width (considering visible length) */
+    private String padRight(String s, int width) {
+        int visible = stripAnsi(s).length();
+        int padding = width - visible;
+        if (padding <= 0) return s;
+        return s + " ".repeat(padding);
     }
 
     // ==================== 代码语法高亮 ====================

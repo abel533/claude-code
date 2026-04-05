@@ -6,19 +6,38 @@ import java.io.PrintStream;
  * 加载动画（Spinner）—— 对应 claude-code/src/components/Spinner.tsx。
  * <p>
  * 在等待 AI 响应时显示旋转动画。
+ * 增强功能：多种动画样式、进度追踪、耗时计时。
  */
 public class SpinnerAnimation {
 
-    private static final String[] FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+    /** 标准 braille spinner */
+    private static final String[] BRAILLE_FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+    /** 简约点动画 */
+    private static final String[] DOT_FRAMES = {"⠋", "⠙", "⠚", "⠒", "⠂", "⠂", "⠒", "⠖", "⠦", "⠖", "⠒", "⠂", "⠂", "⠒", "⠚", "⠙"};
+    /** 箭头动画 */
+    private static final String[] ARROW_FRAMES = {"▹▹▹▹▹", "▸▹▹▹▹", "▹▸▹▹▹", "▹▹▸▹▹", "▹▹▹▸▹", "▹▹▹▹▸"};
+
     private static final int INTERVAL_MS = 80;
 
     private final PrintStream out;
     private volatile boolean running;
     private Thread thread;
     private String message = "Thinking";
+    private long startTimeMs;
+    private String[] frames = BRAILLE_FRAMES;
 
     public SpinnerAnimation(PrintStream out) {
         this.out = out;
+    }
+
+    /** 设置动画样式 */
+    public SpinnerAnimation withStyle(Style style) {
+        this.frames = switch (style) {
+            case BRAILLE -> BRAILLE_FRAMES;
+            case DOT -> DOT_FRAMES;
+            case ARROW -> ARROW_FRAMES;
+        };
+        return this;
     }
 
     /** 启动 spinner */
@@ -26,13 +45,17 @@ public class SpinnerAnimation {
         if (running) return;
         this.message = message;
         this.running = true;
+        this.startTimeMs = System.currentTimeMillis();
 
         thread = Thread.ofVirtual().name("spinner").start(() -> {
             int idx = 0;
             while (running) {
+                long elapsed = System.currentTimeMillis() - startTimeMs;
+                String timeStr = elapsed > 2000 ? " " + formatElapsed(elapsed) : "";
+
                 out.print(AnsiStyle.clearLine());
-                out.print(AnsiStyle.CYAN + "  " + FRAMES[idx % FRAMES.length]
-                        + " " + AnsiStyle.RESET + AnsiStyle.dim(this.message));
+                out.print(AnsiStyle.CYAN + "  " + frames[idx % frames.length]
+                        + " " + AnsiStyle.RESET + AnsiStyle.dim(this.message + timeStr));
                 out.flush();
                 idx++;
                 try {
@@ -61,6 +84,13 @@ public class SpinnerAnimation {
         }
     }
 
+    /** 停止 spinner 并返回耗时 (ms) */
+    public long stopAndGetElapsed() {
+        long elapsed = System.currentTimeMillis() - startTimeMs;
+        stop();
+        return elapsed;
+    }
+
     /** 更新消息 */
     public void updateMessage(String newMessage) {
         this.message = newMessage;
@@ -68,5 +98,21 @@ public class SpinnerAnimation {
 
     public boolean isRunning() {
         return running;
+    }
+
+    /** 获取已经过的时间 (ms) */
+    public long getElapsedMs() {
+        return System.currentTimeMillis() - startTimeMs;
+    }
+
+    private String formatElapsed(long ms) {
+        if (ms < 1000) return ms + "ms";
+        if (ms < 60_000) return String.format("%.1fs", ms / 1000.0);
+        return String.format("%dm%ds", ms / 60_000, (ms % 60_000) / 1000);
+    }
+
+    /** 动画样式 */
+    public enum Style {
+        BRAILLE, DOT, ARROW
     }
 }
