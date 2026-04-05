@@ -113,7 +113,8 @@ public class AppConfig {
                 new SleepTool(),
                 new ToolSearchTool(),
                 new EnterPlanModeTool(),
-                new ExitPlanModeTool()
+                new ExitPlanModeTool(),
+                new SkillTool()
         );
 
         // P2: 注册 MCP 工具桥接（将远程 MCP 工具映射为本地工具）
@@ -238,7 +239,7 @@ public class AppConfig {
     }
 
     @Bean
-    public String systemPrompt() {
+    public String systemPrompt(ToolContext toolContext) {
         Path projectDir = Path.of(System.getProperty("user.dir"));
 
         ClaudeMdLoader claudeLoader = new ClaudeMdLoader(projectDir);
@@ -247,6 +248,9 @@ public class AppConfig {
         SkillLoader skillLoader = new SkillLoader(projectDir);
         skillLoader.loadAll();
         String skillsSummary = skillLoader.buildSkillsSummary();
+
+        // Inject SkillLoader into ToolContext for SkillTool
+        toolContext.set(SkillTool.SKILL_LOADER_KEY, skillLoader);
 
         GitContext gitContext = new GitContext(projectDir).collect();
         String gitSummary = gitContext.buildSummary();

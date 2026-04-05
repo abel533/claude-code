@@ -46,6 +46,10 @@ public class SkillLoader {
     public List<Skill> loadAll() {
         skills.clear();
 
+        // 0. 内置技能
+        skills.addAll(BundledSkills.getAll());
+        log.debug("Loaded {} bundled skills", BundledSkills.getAll().size());
+
         // 1. 用户级技能
         Path userSkillsDir = Path.of(System.getProperty("user.home"), ".claude", "skills");
         loadFromDirectory(userSkillsDir, "user");
@@ -147,25 +151,58 @@ public class SkillLoader {
     }
 
     /**
-     * 构建技能上下文摘要（注入系统提示词）
+     * 构建技能上下文摘要（注入系统提示词）。
+     * 支持预算控制，确保不超过上下文窗口的 1%。
      */
     public String buildSkillsSummary() {
+        return buildSkillsSummary(8000); // Default 8K chars budget
+    }
+
+    /**
+     * 构建技能上下文摘要（带预算控制）。
+     * 对应 TS formatCommandsWithinBudget()。
+     *
+     * @param charBudget 最大字符预算
+     */
+    public String buildSkillsSummary(int charBudget) {
         if (skills.isEmpty()) {
             return "";
         }
 
         StringBuilder sb = new StringBuilder();
         sb.append("# Available Skills\n\n");
+        sb.append("Skills can be invoked by name using the Skill tool or by typing /<name>.\n\n");
+
+        int budgetUsed = sb.length();
+        int perEntryMax = 250; // Per-entry cap for cache efficiency
+
         for (Skill skill : skills) {
-            sb.append("- **").append(skill.name()).append("**");
+            StringBuilder entry = new StringBuilder();
+            entry.append("- **").append(skill.name()).append("**");
             if (!skill.description().isEmpty()) {
-                sb.append(": ").append(skill.description());
+                String desc = skill.description();
+                if (desc.length() > perEntryMax - skill.name().length() - 10) {
+                    desc = desc.substring(0, perEntryMax - skill.name().length() - 13) + "...";
+                }
+                entry.append(": ").append(desc);
             }
             if (!skill.whenToUse().isEmpty()) {
-                sb.append(" (use when: ").append(skill.whenToUse()).append(")");
+                entry.append(" (use when: ").append(skill.whenToUse()).append(")");
             }
-            sb.append("\n");
+            entry.append("\n");
+
+            // Check budget
+            if (budgetUsed + entry.length() > charBudget) {
+                // Add truncation notice
+                sb.append("- ... and ").append(skills.size() - skills.indexOf(skill))
+                        .append(" more skills (use /skills to see all)\n");
+                break;
+            }
+
+            sb.append(entry);
+            budgetUsed += entry.length();
         }
+
         return sb.toString();
     }
 

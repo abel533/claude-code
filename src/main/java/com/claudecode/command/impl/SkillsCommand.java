@@ -31,6 +31,24 @@ public class SkillsCommand implements SlashCommand {
         SkillLoader loader = new SkillLoader(projectDir);
         List<SkillLoader.Skill> skills = loader.loadAll();
 
+        // If args provided, show specific skill detail
+        if (args != null && !args.isBlank()) {
+            String query = args.strip().toLowerCase();
+            var match = skills.stream()
+                    .filter(s -> s.name().equalsIgnoreCase(query))
+                    .findFirst();
+            if (match.isEmpty()) {
+                match = skills.stream()
+                        .filter(s -> s.name().toLowerCase().contains(query))
+                        .findFirst();
+            }
+            if (match.isPresent()) {
+                return formatSkillDetail(match.get());
+            }
+            return AnsiStyle.red("  Skill not found: " + args.strip()) + "\n"
+                    + AnsiStyle.dim("  Use /skills to list all available skills.");
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
         sb.append(AnsiStyle.bold("  🎯 Available Skills\n"));
@@ -61,11 +79,42 @@ public class SkillsCommand implements SlashCommand {
                 if (!skill.whenToUse().isEmpty()) {
                     sb.append("    ").append(AnsiStyle.dim("When: " + skill.whenToUse())).append("\n");
                 }
-                sb.append("    ").append(AnsiStyle.dim("File: " + skill.filePath())).append("\n");
                 sb.append("\n");
             }
-            sb.append(AnsiStyle.dim("  Total " + skills.size() + " skills\n"));
+            sb.append(AnsiStyle.dim("  Total " + skills.size() + " skills"));
+            sb.append(AnsiStyle.dim(" • Use /skills <name> for details\n"));
         }
+
+        return sb.toString();
+    }
+
+    private String formatSkillDetail(SkillLoader.Skill skill) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n");
+        sb.append(AnsiStyle.bold("  🎯 Skill: " + skill.name())).append("\n");
+        sb.append("  ").append("─".repeat(50)).append("\n\n");
+
+        sb.append("  ").append(AnsiStyle.bold("Source: ")).append(skill.source()).append("\n");
+        if (!skill.description().isEmpty()) {
+            sb.append("  ").append(AnsiStyle.bold("Description: ")).append(skill.description()).append("\n");
+        }
+        if (!skill.whenToUse().isEmpty()) {
+            sb.append("  ").append(AnsiStyle.bold("When to use: ")).append(skill.whenToUse()).append("\n");
+        }
+        sb.append("  ").append(AnsiStyle.bold("File: ")).append(skill.filePath()).append("\n");
+        sb.append("\n");
+
+        // Show content preview
+        String content = skill.content();
+        if (content.length() > 500) {
+            content = content.substring(0, 497) + "...";
+        }
+        sb.append(AnsiStyle.dim("  Content:\n"));
+        for (String line : content.lines().toList()) {
+            sb.append(AnsiStyle.dim("  │ " + line)).append("\n");
+        }
+        sb.append("\n");
+        sb.append(AnsiStyle.dim("  Tip: Ask AI to execute this skill or type: /verify, /debug, etc.\n"));
 
         return sb.toString();
     }
