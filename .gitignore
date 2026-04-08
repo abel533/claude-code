@@ -2,6 +2,11 @@
 target/
 *.class
 
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
 # Distribution
 dist/
 dist2/
@@ -21,3 +26,4 @@ Thumbs.db
 # Logs
 *.log
 TODO.md
+application-local.yml

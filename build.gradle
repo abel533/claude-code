@@ -1,0 +1,90 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.0-M2'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
+}
+
+group = 'com.claudecode'
+version = '0.2.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+}
+
+ext {
+    springAiVersion = '2.0.0-M4'
+    jlineVersion = '3.28.0'
+    picocliVersion = '4.7.6'
+}
+
+dependencies {
+    // Spring Boot
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Spring AI
+    implementation 'org.springframework.ai:spring-ai-starter-model-anthropic'
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+
+    // Jink TUI framework
+    implementation 'io.mybatis.jink:jink:0.5.0'
+
+    // JLine 3 — JNI provider for GraalVM, FFM for JIT fallback
+    implementation "org.jline:jline:${jlineVersion}"
+    implementation "org.jline:jline-terminal-jni:${jlineVersion}"
+    runtimeOnly "org.jline:jline-terminal-ffm:${jlineVersion}"
+
+    // Picocli
+    implementation "info.picocli:picocli:${picocliVersion}"
+
+    // Jackson
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.add('--enable-preview')
+    options.release = 25
+}
+
+bootRun {
+    jvmArgs = [
+        '-Xmx512m', '-Xms256m',
+        '--enable-native-access=ALL-UNNAMED',
+        '-Dstdout.encoding=UTF-8',
+        '-Dstderr.encoding=UTF-8',
+        '-Dfile.encoding=UTF-8'
+    ]
+}
+
+// GraalVM Native Image configuration
+graalvmNative {
+    binaries {
+        main {
+            mainClass = 'com.claudecode.ClaudeCodeApplication'
+            buildArgs.add('--enable-preview')
+            buildArgs.add('-H:+ReportExceptionStackTraces')
+            buildArgs.add('--no-fallback')
+
+            // Quick build mode for development
+            if (project.hasProperty('quickBuild')) {
+                buildArgs.add('-Ob')
+            }
+        }
+    }
+}
