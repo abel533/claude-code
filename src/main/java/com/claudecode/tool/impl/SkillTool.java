@@ -105,7 +105,8 @@ public class SkillTool implements Tool {
             msg.append("Skill '").append(skillName).append("' not found.\n\n");
             msg.append("Available skills:\n");
             for (Skill s : skillLoader.getSkills()) {
-                msg.append("  - ").append(s.name());
+                if (s.isHidden() || s.disableModelInvocation()) continue;
+                msg.append("  - ").append(s.userFacingName());
                 if (!s.description().isEmpty()) {
                     msg.append(": ").append(s.description());
                 }
@@ -115,6 +116,13 @@ public class SkillTool implements Tool {
         }
 
         Skill skill = skillOpt.get();
+
+        // Check if model invocation is disabled for this skill
+        if (skill.disableModelInvocation()) {
+            return "Error: Skill '" + skill.userFacingName() + "' cannot be invoked by the model. "
+                    + "It has disable-model-invocation: true in its frontmatter.";
+        }
+
         log.info("Executing skill: {} [{}] context={}", skill.name(), skill.source(), skill.context());
 
         // Build skill execution prompt
@@ -195,7 +203,10 @@ public class SkillTool implements Tool {
         String content = skill.content();
 
         // Prepend base directory if available (matches TS behavior)
-        Path skillDir = skill.filePath() != null ? skill.filePath().getParent() : null;
+        Path skillDir = skill.skillRoot();
+        if (skillDir == null && skill.filePath() != null) {
+            skillDir = skill.filePath().getParent();
+        }
         if (skillDir != null) {
             content = "Base directory for this skill: " + skillDir + "\n\n" + content;
         }

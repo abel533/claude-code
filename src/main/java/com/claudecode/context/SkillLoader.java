@@ -387,36 +387,49 @@ public class SkillLoader {
 
         // 解析所有 frontmatter 字段
         String displayName = fmString(fm, "display-name", fmString(fm, "name", null));
-        if (fm.containsKey("name") && displayName != null && !displayName.isBlank()) {
-            // display-name 优先于 name（与 TS 一致）
-        }
         String fmName = fmString(fm, "name", null);
         if (fmName != null && !fmName.isBlank() && overrideName == null) {
             name = fmName;
         }
 
-        String description = fmString(fm, "description", "");
-        // 描述 fallback：从 markdown 第一行提取
+        // Description with tracking
+        String rawDescription = fmString(fm, "description", null);
+        boolean hasUserSpecifiedDescription = rawDescription != null && !rawDescription.isBlank();
+        String description = hasUserSpecifiedDescription ? rawDescription : "";
         if (description.isEmpty() && !content.isEmpty()) {
             description = extractDescriptionFromMarkdown(content);
         }
 
-        String whenToUse = fmString(fm, "when-to-use", fmString(fm, "whenToUse", ""));
+        String whenToUse = fmString(fm, "when-to-use", fmString(fm, "whenToUse", fmString(fm, "when_to_use", "")));
         List<String> allowedTools = fmStringList(fm, "allowed-tools");
         List<String> disallowedTools = fmStringList(fm, "disallowed-tools");
-        if (disallowedTools == null) {
-            // TS 也支持 disable-model-invocation 作为别名
-            disallowedTools = fmStringList(fm, "disable-model-invocation");
-        }
+
+        // disable-model-invocation: separate boolean flag (NOT alias for disallowedTools)
+        boolean disableModelInvocation = fmBoolean(fm, "disable-model-invocation", false);
+
         String model = fmString(fm, "model", null);
-        String effort = fmString(fm, "effort", null);
+        // "inherit" means use parent model (TS treats as undefined)
+        if ("inherit".equalsIgnoreCase(model)) {
+            model = null;
+        }
+
+        // Effort validation (only accept valid values)
+        String rawEffort = fmString(fm, "effort", null);
+        String effort = parseEffortValue(rawEffort);
+        if (rawEffort != null && effort == null) {
+            log.debug("Skill {} has invalid effort '{}'. Valid: low, medium, high, max, or positive integer",
+                    name, rawEffort);
+        }
+
         boolean userInvocable = fmBoolean(fm, "user-invocable", true);
+        boolean hideFromSlashCommandTool = fmBoolean(fm, "hide-from-slash-command-tool", false);
+        boolean isSensitive = fmBoolean(fm, "is-sensitive", false);
+
         String context = fmString(fm, "context", "inline");
         String agent = fmString(fm, "agent", null);
         String shell = fmString(fm, "shell", null);
-        // shell 校验（仅 bash / powershell）
         if (shell != null && !"bash".equals(shell) && !"powershell".equals(shell)) {
-            log.warn("Invalid shell '{}' in {}, ignoring (use 'bash' or 'powershell')", shell, path);
+            log.warn("Invalid shell '{}' in {}, falling back to bash", shell, path);
             shell = null;
         }
         List<String> paths = parseSkillPaths(fm);
@@ -424,9 +437,21 @@ public class SkillLoader {
         List<String> arguments = fmStringList(fm, "arguments");
         String version = fmString(fm, "version", null);
 
-        return new Skill(name, displayName, description, whenToUse, content, source, path,
-                allowedTools, disallowedTools, model, effort, userInvocable,
-                context, agent, shell, paths, argumentHint, arguments, version);
+        // Determine loadedFrom based on source
+        String loadedFrom = Skill.sourceToLoadedFrom(source);
+
+        // skillRoot: the directory containing the skill (for SKILL.md, it's parent; for single .md, null)
+        Path skillRoot = null;
+        if (path.getFileName().toString().equalsIgnoreCase("SKILL.md")) {
+            skillRoot = path.getParent();
+        }
+
+        return new Skill(name, displayName, description, hasUserSpecifiedDescription,
+                whenToUse, content, source, loadedFrom, path, skillRoot,
+                allowedTools, disallowedTools, disableModelInvocation,
+                model, effort, userInvocable, hideFromSlashCommandTool, isSensitive,
+                context, agent, shell, paths, argumentHint, arguments, version,
+                content.length(), "running");
     }
 
     // ==================== Frontmatter YAML 解析工具方法 ====================
@@ -828,7 +853,13 @@ public class SkillLoader {
      * @param charBudget 最大字符预算
      */
     public String buildSkillsSummary(int charBudget) {
-        if (skills.isEmpty()) {
+        List<Skill> allSkills = getSkills();
+        // Filter out hidden and model-invocation-disabled skills
+        List<Skill> visibleSkills = allSkills.stream()
+                .filter(s -> !s.isHidden() && !s.disableModelInvocation())
+                .toList();
+
+        if (visibleSkills.isEmpty()) {
             return "";
         }
 
@@ -839,9 +870,9 @@ public class SkillLoader {
         int budgetUsed = sb.length();
         int perEntryMax = 250; // Per-entry cap for cache efficiency
 
-        for (Skill skill : skills) {
+        for (Skill skill : visibleSkills) {
             StringBuilder entry = new StringBuilder();
-            entry.append("- **").append(skill.name()).append("**");
+            entry.append("- **").append(skill.userFacingName()).append("**");
             if (!skill.description().isEmpty()) {
                 String desc = skill.description();
                 if (desc.length() > perEntryMax - skill.name().length() - 10) {
@@ -857,7 +888,7 @@ public class SkillLoader {
             // Check budget
             if (budgetUsed + entry.length() > charBudget) {
                 // Add truncation notice
-                sb.append("- ... and ").append(skills.size() - skills.indexOf(skill))
+                sb.append("- ... and ").append(visibleSkills.size() - visibleSkills.indexOf(skill))
                         .append(" more skills (use /skills to see all)\n");
                 break;
             }
@@ -870,50 +901,82 @@ public class SkillLoader {
     }
 
     /**
-     * 技能数据记录 —— 对应 TS Command 类型中与 Skill 相关的字段。
+     * 技能数据记录 —— 对应 TS Command/CommandBase/PromptCommand 类型。
      *
-     * @param name            技能名称（目录名或 frontmatter name）
-     * @param displayName     显示名称（frontmatter display-name，可为 null）
-     * @param description     技能描述
-     * @param whenToUse       何时使用提示
-     * @param content         Markdown 内容体
-     * @param source          来源（user/project/command/bundled）
-     * @param filePath        文件路径
-     * @param allowedTools    允许使用的工具列表（null = 不限制）
-     * @param disallowedTools 禁止使用的工具列表（null = 不限制）
-     * @param model           模型覆盖（null = 使用默认，"inherit" = 继承父级）
-     * @param effort          Effort 级别（low/medium/high/max 或整数）
-     * @param userInvocable   是否可由用户通过 /name 调用（默认 true）
-     * @param context         执行上下文（"inline" = 当前上下文, "fork" = 子 Agent）
-     * @param agent           子 Agent 类型（当 context=fork 时使用）
-     * @param shell           Shell 类型（"bash" / "powershell"，可为 null）
-     * @param paths           条件激活路径（glob 模式列表，null = 始终激活）
-     * @param argumentHint    参数提示文本
-     * @param arguments       参数名列表
-     * @param version         技能版本
+     * @param name                       技能名称（目录名或 frontmatter name）
+     * @param displayName                显示名称（frontmatter display-name，可为 null）
+     * @param description                技能描述
+     * @param hasUserSpecifiedDescription 描述是否来自 frontmatter（vs 自动提取）
+     * @param whenToUse                  何时使用提示
+     * @param content                    Markdown 内容体
+     * @param source                     来源（user/project/command/bundled/mcp/plugin/policySettings）
+     * @param loadedFrom                 加载来源（commands_DEPRECATED/skills/plugin/managed/bundled/mcp）
+     * @param filePath                   文件路径
+     * @param skillRoot                  技能基础目录（用于 CLAUDE_PLUGIN_ROOT 等环境变量）
+     * @param allowedTools               允许使用的工具列表（null = 不限制）
+     * @param disallowedTools            禁止使用的工具列表（null = 不限制）
+     * @param disableModelInvocation     是否禁止模型通过 SkillTool 调用此技能
+     * @param model                      模型覆盖（null = 使用默认，"inherit" = 继承父级）
+     * @param effort                     Effort 级别（low/medium/high/max 或整数，已验证）
+     * @param userInvocable              是否可由用户通过 /name 调用（默认 true）
+     * @param hideFromSlashCommandTool   对 SkillTool 隐藏（hide-from-slash-command-tool frontmatter）
+     * @param isSensitive                参数是否应从会话历史中脱敏
+     * @param context                    执行上下文（"inline" = 当前上下文, "fork" = 子 Agent）
+     * @param agent                      子 Agent 类型（当 context=fork 时使用）
+     * @param shell                      Shell 类型（"bash" / "powershell"，可为 null）
+     * @param paths                      条件激活路径（glob 模式列表，null = 始终激活）
+     * @param argumentHint               参数提示文本
+     * @param arguments                  参数名列表
+     * @param version                    技能版本
+     * @param contentLength              Markdown 内容长度（用于 token 预估）
+     * @param progressMessage            执行时显示的进度消息
      */
     public record Skill(
             String name,
             String displayName,
             String description,
+            boolean hasUserSpecifiedDescription,
             String whenToUse,
             String content,
             String source,
+            String loadedFrom,
             Path filePath,
+            Path skillRoot,
             List<String> allowedTools,
             List<String> disallowedTools,
+            boolean disableModelInvocation,
             String model,
             String effort,
             boolean userInvocable,
+            boolean hideFromSlashCommandTool,
+            boolean isSensitive,
             String context,
             String agent,
             String shell,
             List<String> paths,
             String argumentHint,
             List<String> arguments,
-            String version
+            String version,
+            int contentLength,
+            String progressMessage
     ) {
-        /** 便捷构造（向后兼容旧代码） */
+        /** 向后兼容 19 参数构造器（从之前的 7 critical fixes 版本） */
+        public Skill(String name, String displayName, String description, String whenToUse,
+                     String content, String source, Path filePath,
+                     List<String> allowedTools, List<String> disallowedTools,
+                     String model, String effort, boolean userInvocable,
+                     String context, String agent, String shell,
+                     List<String> paths, String argumentHint, List<String> arguments, String version) {
+            this(name, displayName, description, false, whenToUse, content, source,
+                    sourceToLoadedFrom(source), filePath,
+                    filePath != null ? filePath.getParent() : null,
+                    allowedTools, disallowedTools, false, model, effort,
+                    userInvocable, false, false, context, agent, shell,
+                    paths, argumentHint, arguments, version,
+                    content != null ? content.length() : 0, "running");
+        }
+
+        /** 最简便捷构造（BundledSkills 使用） */
         public Skill(String name, String description, String whenToUse,
                      String content, String source, Path filePath) {
             this(name, null, description, whenToUse, content, source, filePath,
@@ -934,5 +997,59 @@ public class SkillLoader {
         public String userFacingName() {
             return displayName != null && !displayName.isBlank() ? displayName : name;
         }
+
+        /** 是否对用户隐藏（不在 typeahead/help 中显示） */
+        public boolean isHidden() {
+            return !userInvocable || hideFromSlashCommandTool;
+        }
+
+        /** 是否来自 MCP */
+        public boolean isMcp() {
+            return "mcp".equals(source) || "mcp".equals(loadedFrom);
+        }
+
+        /** 预估 frontmatter 部分 token 数 */
+        public int estimateFrontmatterTokens() {
+            String text = String.join(" ",
+                    name != null ? name : "",
+                    description != null ? description : "",
+                    whenToUse != null ? whenToUse : "");
+            // Rough estimate: ~4 chars per token
+            return Math.max(1, text.length() / 4);
+        }
+
+        /** 将 source 映射到 loadedFrom 值 */
+        private static String sourceToLoadedFrom(String source) {
+            if (source == null) return "skills";
+            return switch (source) {
+                case "bundled" -> "bundled";
+                case "command" -> "commands_DEPRECATED";
+                case "mcp" -> "mcp";
+                case "plugin" -> "plugin";
+                case "policySettings" -> "managed";
+                default -> "skills";
+            };
+        }
+    }
+
+    // ==================== Effort Validation ====================
+
+    /** Valid effort level strings (matching TS EFFORT_LEVELS) */
+    private static final Set<String> VALID_EFFORT_LEVELS = Set.of("low", "medium", "high", "max");
+
+    /**
+     * Parse and validate an effort value.
+     * Accepts: "low", "medium", "high", "max", or a positive integer string.
+     * Returns null for invalid values (matching TS parseEffortValue).
+     */
+    private static String parseEffortValue(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String normalized = raw.strip().toLowerCase();
+        if (VALID_EFFORT_LEVELS.contains(normalized)) return normalized;
+        try {
+            int val = Integer.parseInt(normalized);
+            if (val > 0) return String.valueOf(val);
+        } catch (NumberFormatException ignored) {}
+        return null;
     }
 }
