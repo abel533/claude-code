@@ -7,6 +7,7 @@ import com.claudecode.tool.ToolContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -112,12 +113,19 @@ public class SkillTool implements Tool {
         }
 
         Skill skill = skillOpt.get();
-        log.info("Executing skill: {} [{}]", skill.name(), skill.source());
+        log.info("Executing skill: {} [{}] context={}", skill.name(), skill.source(), skill.context());
 
         // Build skill execution prompt
         String skillPrompt = buildSkillPrompt(skill, arguments);
 
-        // Execute via agent factory (same as AgentTool)
+        // Check if skill should be forked (sub-agent) or inline
+        if (!skill.isForked()) {
+            // Inline execution: return the skill prompt for the current agent to follow
+            return "📋 Skill '" + skill.userFacingName() + "' loaded (inline mode).\n\n"
+                    + "Follow these instructions:\n\n" + skill.content();
+        }
+
+        // Forked execution: execute via agent factory (same as AgentTool)
         @SuppressWarnings("unchecked")
         java.util.function.Function<String, String> agentFactory =
                 context.getOrDefault(AgentTool.AGENT_FACTORY_KEY, null);
@@ -152,10 +160,11 @@ public class SkillTool implements Tool {
 
     /**
      * Build the full prompt for skill execution.
+     * Supports argument substitution (${ARGUMENT_NAME}, ${CLAUDE_SKILL_DIR}, ${CLAUDE_SESSION_ID}).
      */
     private String buildSkillPrompt(Skill skill, String arguments) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are executing a skill: ").append(skill.name()).append("\n\n");
+        sb.append("You are executing a skill: ").append(skill.userFacingName()).append("\n\n");
 
         if (!skill.description().isEmpty()) {
             sb.append("Description: ").append(skill.description()).append("\n");
@@ -163,11 +172,27 @@ public class SkillTool implements Tool {
         if (!skill.whenToUse().isEmpty()) {
             sb.append("When to use: ").append(skill.whenToUse()).append("\n");
         }
+        if (skill.model() != null) {
+            sb.append("Preferred model: ").append(skill.model()).append("\n");
+        }
+        if (skill.effort() != null) {
+            sb.append("Effort level: ").append(skill.effort()).append("\n");
+        }
         sb.append("\n");
 
-        // Inject skill content as instructions
+        // Tool restrictions
+        if (skill.allowedTools() != null && !skill.allowedTools().isEmpty()) {
+            sb.append("Allowed tools: ").append(String.join(", ", skill.allowedTools())).append("\n");
+        }
+        if (skill.disallowedTools() != null && !skill.disallowedTools().isEmpty()) {
+            sb.append("Disallowed tools: ").append(String.join(", ", skill.disallowedTools())).append("\n");
+        }
+
+        // Inject skill content with argument substitution
+        String content = skill.content();
+        content = substituteArguments(content, arguments, skill);
         sb.append("## Skill Instructions\n\n");
-        sb.append(skill.content()).append("\n\n");
+        sb.append(content).append("\n\n");
 
         // Inject arguments
         if (arguments != null && !arguments.isBlank()) {
@@ -184,6 +209,41 @@ public class SkillTool implements Tool {
                 """);
 
         return sb.toString();
+    }
+
+    /**
+     * Argument substitution — replaces ${ARGUMENT_NAME}, ${CLAUDE_SKILL_DIR}, ${CLAUDE_SESSION_ID}.
+     * Corresponds to TS substituteArguments() + template variables.
+     */
+    private String substituteArguments(String content, String arguments, Skill skill) {
+        if (content == null) return "";
+
+        // Replace ${CLAUDE_SKILL_DIR} with the skill's directory
+        if (skill.filePath() != null) {
+            Path skillDir = skill.filePath().getParent();
+            if (skillDir != null) {
+                content = content.replace("${CLAUDE_SKILL_DIR}", skillDir.toString());
+            }
+        }
+
+        // Replace ${CLAUDE_SESSION_ID} with a session identifier
+        content = content.replace("${CLAUDE_SESSION_ID}",
+                System.getProperty("claude.session.id", "default-session"));
+
+        // Replace generic ${ARGUMENTS} or positional args
+        if (arguments != null && !arguments.isBlank()) {
+            content = content.replace("${ARGUMENTS}", arguments);
+
+            // Parse named arguments from skill definition
+            if (skill.arguments() != null) {
+                String[] argValues = arguments.split("\\s+", skill.arguments().size());
+                for (int i = 0; i < skill.arguments().size() && i < argValues.length; i++) {
+                    content = content.replace("${" + skill.arguments().get(i) + "}", argValues[i]);
+                }
+            }
+        }
+
+        return content;
     }
 
     /**
