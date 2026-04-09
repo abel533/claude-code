@@ -10,14 +10,31 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Skills 技能加载器 —— 对应 claude-code/src/skills/ 模块。
+ * Skills 技能加载器 —— 对应 claude-code/src/skills/loadSkillsDir.ts。
  * <p>
- * 从多个来源扫描和加载 .md 格式的技能文件：
+ * 从多个来源扫描和加载技能：
  * <ol>
- *   <li>用户级: ~/.claude/skills/</li>
- *   <li>项目级: ./.claude/skills/</li>
- *   <li>命令目录: ./.claude/commands/ (自动转换为技能)</li>
+ *   <li>用户级: ~/.claude/skills/ — 目录格式 (skill-name/SKILL.md)</li>
+ *   <li>项目级: ./.claude/skills/ — 目录格式 (skill-name/SKILL.md)</li>
+ *   <li>命令目录: ./.claude/commands/ — 目录格式 (SKILL.md) 或单文件 (.md)，支持递归子目录</li>
  * </ol>
+ * <p>
+ * /skills/ 目录仅支持目录格式（与原版 claude-code 一致）：
+ * <pre>
+ * .claude/skills/
+ * └── verify-tests/
+ *     └── SKILL.md      ← 技能名 = "verify-tests"
+ * </pre>
+ * <p>
+ * /commands/ 目录支持两种格式：
+ * <pre>
+ * .claude/commands/
+ * ├── my-cmd.md          ← 命令名 = "my-cmd"（单文件格式）
+ * ├── my-skill/
+ * │   └── SKILL.md       ← 命令名 = "my-skill"（目录格式，优先）
+ * └── sub/
+ *     └── nested-cmd.md  ← 命令名 = "sub:nested-cmd"（命名空间）
+ * </pre>
  * <p>
  * 每个技能文件支持 YAML frontmatter 元数据：
  * <pre>
@@ -50,56 +67,146 @@ public class SkillLoader {
         skills.addAll(BundledSkills.getAll());
         log.debug("Loaded {} bundled skills", BundledSkills.getAll().size());
 
-        // 1. 用户级技能
+        // 1. 用户级技能（目录格式: skill-name/SKILL.md）
         Path userSkillsDir = Path.of(System.getProperty("user.home"), ".claude", "skills");
-        loadFromDirectory(userSkillsDir, "user");
+        loadFromSkillsDirectory(userSkillsDir, "user");
 
-        // 2. 项目级技能
+        // 2. 项目级技能（目录格式: skill-name/SKILL.md）
         Path projectSkillsDir = projectDir.resolve(".claude").resolve("skills");
-        loadFromDirectory(projectSkillsDir, "project");
+        loadFromSkillsDirectory(projectSkillsDir, "project");
 
-        // 3. 命令目录（自动转换为技能）
+        // 3. 命令目录（支持目录格式 + 单文件格式 + 递归子目录）
         Path commandsDir = projectDir.resolve(".claude").resolve("commands");
-        loadFromDirectory(commandsDir, "command");
+        loadFromCommandsDirectory(commandsDir, "command");
 
         log.debug("Loaded {} skills in total", skills.size());
         return Collections.unmodifiableList(skills);
     }
 
     /**
-     * 从指定目录加载 .md 技能文件
+     * 从 skills 目录加载技能 —— 仅支持目录格式: skill-name/SKILL.md
+     * <p>
+     * 对应 TS loadSkillsFromSkillsDir():
+     * - 每个技能是一个子目录，内含 SKILL.md
+     * - 单独的 .md 文件不被加载（与原版一致）
+     * - 目录名即技能名
      */
-    private void loadFromDirectory(Path dir, String source) {
+    private void loadFromSkillsDirectory(Path dir, String source) {
         if (!Files.isDirectory(dir)) {
             return;
         }
 
         try (var stream = Files.list(dir)) {
-            stream.filter(p -> p.toString().endsWith(".md"))
+            stream.filter(Files::isDirectory)
                     .sorted()
-                    .forEach(p -> {
-                        try {
-                            Skill skill = parseSkillFile(p, source);
-                            skills.add(skill);
-                            log.debug("Loaded skill: {} [{}] from {}", skill.name(), source, p.getFileName());
-                        } catch (IOException e) {
-                            log.warn("Failed to load skill file: {}: {}", p, e.getMessage());
+                    .forEach(subDir -> {
+                        Path skillFile = subDir.resolve("SKILL.md");
+                        if (Files.isRegularFile(skillFile)) {
+                            try {
+                                Skill skill = parseSkillFile(skillFile, source, subDir.getFileName().toString());
+                                skills.add(skill);
+                                log.debug("Loaded skill: {} [{}] from {}/SKILL.md", skill.name(), source, subDir.getFileName());
+                            } catch (IOException e) {
+                                log.warn("Failed to load skill file: {}: {}", skillFile, e.getMessage());
+                            }
+                        } else {
+                            log.debug("Skipping skill directory without SKILL.md: {}", subDir.getFileName());
                         }
                     });
         } catch (IOException e) {
-            log.debug("Failed to scan skill directory: {}: {}", dir, e.getMessage());
+            log.debug("Failed to scan skills directory: {}: {}", dir, e.getMessage());
         }
     }
 
     /**
-     * 解析单个技能文件，提取 frontmatter 和内容
+     * 从 commands 目录加载技能 —— 支持两种格式:
+     * <ol>
+     *   <li>目录格式: command-name/SKILL.md（优先）</li>
+     *   <li>单文件格式: command-name.md</li>
+     *   <li>递归子目录: sub/command-name.md → 名称 "sub:command-name"</li>
+     * </ol>
+     * <p>
+     * 对应 TS loadSkillsFromCommandsDir()
      */
-    private Skill parseSkillFile(Path path, String source) throws IOException {
+    private void loadFromCommandsDirectory(Path dir, String source) {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+
+        loadCommandsRecursive(dir, dir, source);
+    }
+
+    /**
+     * 递归加载 commands 目录
+     */
+    private void loadCommandsRecursive(Path currentDir, Path baseDir, String source) {
+        try (var stream = Files.list(currentDir)) {
+            stream.sorted().forEach(entry -> {
+                try {
+                    if (Files.isDirectory(entry)) {
+                        // 检查目录内是否有 SKILL.md（目录格式技能）
+                        Path skillFile = entry.resolve("SKILL.md");
+                        if (Files.isRegularFile(skillFile)) {
+                            String name = buildCommandName(entry, baseDir, true);
+                            Skill skill = parseSkillFile(skillFile, source, name);
+                            skills.add(skill);
+                            log.debug("Loaded command skill: {} [{}] from {}/SKILL.md", name, source, entry.getFileName());
+                        } else {
+                            // 递归进入子目录
+                            loadCommandsRecursive(entry, baseDir, source);
+                        }
+                    } else if (entry.toString().endsWith(".md")) {
+                        // 单文件格式
+                        String name = buildCommandName(entry, baseDir, false);
+                        Skill skill = parseSkillFile(entry, source, name);
+                        skills.add(skill);
+                        log.debug("Loaded command: {} [{}] from {}", name, source, entry.getFileName());
+                    }
+                } catch (IOException e) {
+                    log.warn("Failed to load command file: {}: {}", entry, e.getMessage());
+                }
+            });
+        } catch (IOException e) {
+            log.debug("Failed to scan commands directory: {}: {}", currentDir, e.getMessage());
+        }
+    }
+
+    /**
+     * 构建命令名称，支持命名空间（子目录用 : 分隔）。
+     * <p>
+     * 例: baseDir=commands, entry=commands/sub/my-cmd.md → "sub:my-cmd"
+     *     baseDir=commands, entry=commands/my-skill/SKILL.md (isDir=true) → "my-skill"
+     */
+    private String buildCommandName(Path entry, Path baseDir, boolean isDirectory) {
+        Path relative;
+        if (isDirectory) {
+            // 目录格式：取目录名相对于 baseDir 的路径
+            relative = baseDir.relativize(entry);
+        } else {
+            // 文件格式：取文件路径（去掉 .md）相对于 baseDir
+            relative = baseDir.relativize(entry);
+        }
+
+        // 用 : 替换路径分隔符，去掉 .md 后缀
+        String name = relative.toString()
+                .replace('\\', ':')
+                .replace('/', ':');
+        if (!isDirectory && name.endsWith(".md")) {
+            name = name.substring(0, name.length() - 3);
+        }
+        return name;
+    }
+
+    /**
+     * 解析单个技能文件，提取 frontmatter 和内容。
+     * 当 overrideName 非 null 时，用它作为默认技能名（目录名或命令名）。
+     */
+    private Skill parseSkillFile(Path path, String source, String overrideName) throws IOException {
         String raw = Files.readString(path, StandardCharsets.UTF_8).strip();
         String fileName = path.getFileName().toString().replace(".md", "");
 
-        // 尝试提取 YAML frontmatter
-        String name = fileName;
+        // 默认名称：优先使用 overrideName（目录名/命名空间名），否则用文件名
+        String name = overrideName != null ? overrideName : fileName;
         String description = "";
         String whenToUse = "";
         String content = raw;
