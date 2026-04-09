@@ -4,6 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
+import com.claudecode.util.ModelResolver;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -132,6 +134,9 @@ public class SkillLoader {
             // 4. 命令目录（支持目录格式 + 单文件格式 + 递归子目录）
             Path commandsDir = projectDir.resolve(".claude").resolve("commands");
             loadFromCommandsDirectory(commandsDir, "command");
+
+            // 5. MCP skills from registered builders
+            loadMcpSkills();
 
             // Separate conditional and unconditional skills
             List<Skill> unconditional = new ArrayList<>();
@@ -408,10 +413,8 @@ public class SkillLoader {
         boolean disableModelInvocation = fmBoolean(fm, "disable-model-invocation", false);
 
         String model = fmString(fm, "model", null);
-        // "inherit" means use parent model (TS treats as undefined)
-        if ("inherit".equalsIgnoreCase(model)) {
-            model = null;
-        }
+        // Model resolution: aliases (haiku→full ID), "inherit"→null
+        model = ModelResolver.resolveSkillModelOverride(model);
 
         // Effort validation (only accept valid values)
         String rawEffort = fmString(fm, "effort", null);
@@ -437,6 +440,9 @@ public class SkillLoader {
         List<String> arguments = fmStringList(fm, "arguments");
         String version = fmString(fm, "version", null);
 
+        // Hooks parsing (corresponds to TS parseHooksFromFrontmatter + HooksSchema)
+        Map<String, Object> hooks = parseHooksFromFrontmatter(fm, name);
+
         // Determine loadedFrom based on source
         String loadedFrom = Skill.sourceToLoadedFrom(source);
 
@@ -451,7 +457,7 @@ public class SkillLoader {
                 allowedTools, disallowedTools, disableModelInvocation,
                 model, effort, userInvocable, hideFromSlashCommandTool, isSensitive,
                 context, agent, shell, paths, argumentHint, arguments, version,
-                content.length(), "running");
+                content.length(), "running", hooks);
     }
 
     // ==================== Frontmatter YAML 解析工具方法 ====================
@@ -930,6 +936,7 @@ public class SkillLoader {
      * @param version                    技能版本
      * @param contentLength              Markdown 内容长度（用于 token 预估）
      * @param progressMessage            执行时显示的进度消息
+     * @param hooks                      技能级生命周期钩子（PreToolUse, PostToolUse, Stop 等）
      */
     public record Skill(
             String name,
@@ -958,8 +965,26 @@ public class SkillLoader {
             List<String> arguments,
             String version,
             int contentLength,
-            String progressMessage
+            String progressMessage,
+            Map<String, Object> hooks
     ) {
+        /** 向后兼容 28 参数构造器（无 hooks） */
+        public Skill(String name, String displayName, String description,
+                     boolean hasUserSpecifiedDescription, String whenToUse, String content,
+                     String source, String loadedFrom, Path filePath, Path skillRoot,
+                     List<String> allowedTools, List<String> disallowedTools,
+                     boolean disableModelInvocation, String model, String effort,
+                     boolean userInvocable, boolean hideFromSlashCommandTool, boolean isSensitive,
+                     String context, String agent, String shell, List<String> paths,
+                     String argumentHint, List<String> arguments, String version,
+                     int contentLength, String progressMessage) {
+            this(name, displayName, description, hasUserSpecifiedDescription, whenToUse,
+                    content, source, loadedFrom, filePath, skillRoot, allowedTools, disallowedTools,
+                    disableModelInvocation, model, effort, userInvocable, hideFromSlashCommandTool,
+                    isSensitive, context, agent, shell, paths, argumentHint, arguments, version,
+                    contentLength, progressMessage, null);
+        }
+
         /** 向后兼容 19 参数构造器（从之前的 7 critical fixes 版本） */
         public Skill(String name, String displayName, String description, String whenToUse,
                      String content, String source, Path filePath,
@@ -973,7 +998,7 @@ public class SkillLoader {
                     allowedTools, disallowedTools, false, model, effort,
                     userInvocable, false, false, context, agent, shell,
                     paths, argumentHint, arguments, version,
-                    content != null ? content.length() : 0, "running");
+                    content != null ? content.length() : 0, "running", null);
         }
 
         /** 最简便捷构造（BundledSkills 使用） */
@@ -1008,6 +1033,11 @@ public class SkillLoader {
             return "mcp".equals(source) || "mcp".equals(loadedFrom);
         }
 
+        /** 是否有生命周期钩子 */
+        public boolean hasHooks() {
+            return hooks != null && !hooks.isEmpty();
+        }
+
         /** 预估 frontmatter 部分 token 数 */
         public int estimateFrontmatterTokens() {
             String text = String.join(" ",
@@ -1030,6 +1060,80 @@ public class SkillLoader {
                 default -> "skills";
             };
         }
+    }
+
+    // ==================== Hooks Parsing ====================
+
+    /** Valid hook event names (matching TS HooksSchema) */
+    private static final Set<String> VALID_HOOK_EVENTS = Set.of(
+            "PreToolUse", "PostToolUse", "Stop", "Notification",
+            "SubAgentStart", "SubAgentEnd", "ConfigChange"
+    );
+
+    /**
+     * Parse hooks from frontmatter, validating against HooksSchema.
+     * Corresponds to TS parseHooksFromFrontmatter() + HooksSchema validation.
+     *
+     * @return validated hooks map, or null if no hooks or invalid
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseHooksFromFrontmatter(Map<String, Object> fm, String skillName) {
+        Object hooksRaw = fm.get("hooks");
+        if (hooksRaw == null) return null;
+
+        if (!(hooksRaw instanceof Map)) {
+            log.debug("Invalid hooks in skill '{}': expected object, got {}", skillName, hooksRaw.getClass().getSimpleName());
+            return null;
+        }
+
+        Map<String, Object> hooks = (Map<String, Object>) hooksRaw;
+        Map<String, Object> validated = new LinkedHashMap<>();
+
+        for (var entry : hooks.entrySet()) {
+            String eventName = entry.getKey();
+            if (!VALID_HOOK_EVENTS.contains(eventName)) {
+                log.debug("Unknown hook event '{}' in skill '{}', skipping", eventName, skillName);
+                continue;
+            }
+
+            Object hookDef = entry.getValue();
+            if (hookDef instanceof List || hookDef instanceof Map || hookDef instanceof String) {
+                validated.put(eventName, hookDef);
+            } else {
+                log.debug("Invalid hook definition for '{}' in skill '{}': {}", eventName, skillName, hookDef);
+            }
+        }
+
+        return validated.isEmpty() ? null : Collections.unmodifiableMap(validated);
+    }
+
+    // ==================== MCP Skill Integration ====================
+
+    /**
+     * Load MCP skills from the McpSkillBuilders registry.
+     * Called during loadAll() to merge MCP-provided skills.
+     */
+    private void loadMcpSkills() {
+        try {
+            List<Skill> mcpSkills = McpSkillBuilders.getAllMcpSkills();
+            if (!mcpSkills.isEmpty()) {
+                skills.addAll(mcpSkills);
+                log.debug("Loaded {} MCP skills from registered builders", mcpSkills.size());
+            }
+        } catch (Exception e) {
+            log.debug("Failed to load MCP skills: {}", e.getMessage());
+        }
+    }
+
+    // ==================== Experimental Features ====================
+
+    /**
+     * Check if experimental skill search is enabled.
+     * Corresponds to TS feature('EXPERIMENTAL_SKILL_SEARCH').
+     */
+    public static boolean isExperimentalSkillSearchEnabled() {
+        return isEnvTruthy("CLAUDE_CODE_EXPERIMENTAL_SKILL_SEARCH")
+                || isEnvTruthy("EXPERIMENTAL_SKILL_SEARCH");
     }
 
     // ==================== Effort Validation ====================

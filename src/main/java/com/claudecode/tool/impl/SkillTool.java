@@ -1,7 +1,10 @@
 package com.claudecode.tool.impl;
 
+import com.claudecode.context.SkillFilters;
 import com.claudecode.context.SkillLoader;
 import com.claudecode.context.SkillLoader.Skill;
+import com.claudecode.permission.PermissionRuleEngine;
+import com.claudecode.permission.PermissionTypes.PermissionDecision;
 import com.claudecode.tool.Tool;
 import com.claudecode.tool.ToolContext;
 import com.claudecode.util.ArgumentSubstitution;
@@ -34,6 +37,12 @@ public class SkillTool implements Tool {
 
     /** ToolContext key for SkillLoader */
     public static final String SKILL_LOADER_KEY = "SKILL_LOADER";
+
+    /** ToolContext key for PermissionRuleEngine */
+    public static final String PERMISSION_ENGINE_KEY = "PERMISSION_ENGINE";
+
+    /** Max progress messages to show in non-verbose mode (matches TS) */
+    private static final int MAX_PROGRESS_MESSAGES = 3;
 
     @Override
     public String name() {
@@ -87,28 +96,38 @@ public class SkillTool implements Tool {
             return "Error: 'skill_name' is required";
         }
 
+        // Normalize leading slash (matches TS behavior)
+        boolean hasLeadingSlash = skillName.startsWith("/");
+        if (hasLeadingSlash) {
+            skillName = skillName.substring(1);
+            logEvent("tengu_skill_tool_slash_prefix", Map.of());
+        }
+
         // Get SkillLoader from context
         SkillLoader skillLoader = context.get(SKILL_LOADER_KEY);
         if (skillLoader == null) {
             return "Error: SkillLoader not configured. No skills available.";
         }
 
-        // Find skill by name
-        Optional<Skill> skillOpt = skillLoader.findByName(skillName);
+        // Find skill by name (using filtered list for model-invocable skills)
+        List<Skill> allSkills = skillLoader.getSkills();
+        List<Skill> visibleSkills = SkillFilters.getSkillToolCommands(allSkills);
+
+        Optional<Skill> skillOpt = SkillFilters.findCommand(allSkills, skillName);
         if (skillOpt.isEmpty()) {
-            // Try partial match
-            skillOpt = findByPartialName(skillLoader.getSkills(), skillName);
+            // Try partial match across all skills
+            skillOpt = findByPartialName(allSkills, skillName);
         }
 
         if (skillOpt.isEmpty()) {
             StringBuilder msg = new StringBuilder();
             msg.append("Skill '").append(skillName).append("' not found.\n\n");
             msg.append("Available skills:\n");
-            for (Skill s : skillLoader.getSkills()) {
-                if (s.isHidden() || s.disableModelInvocation()) continue;
+            for (Skill s : visibleSkills) {
                 msg.append("  - ").append(s.userFacingName());
-                if (!s.description().isEmpty()) {
-                    msg.append(": ").append(s.description());
+                String desc = SkillFilters.formatDescriptionWithSource(s);
+                if (!desc.isEmpty()) {
+                    msg.append(": ").append(desc);
                 }
                 msg.append("\n");
             }
@@ -119,9 +138,18 @@ public class SkillTool implements Tool {
 
         // Check if model invocation is disabled for this skill
         if (skill.disableModelInvocation()) {
-            return "Error: Skill '" + skill.userFacingName() + "' cannot be invoked by the model. "
-                    + "It has disable-model-invocation: true in its frontmatter.";
+            return renderError(skill, "Skill '" + skill.userFacingName()
+                    + "' cannot be invoked by the model. It has disable-model-invocation: true.");
         }
+
+        // Permission check (corresponds to TS checkPermissions)
+        String permissionError = checkPermissions(skill, skillName, context);
+        if (permissionError != null) {
+            return renderRejected(skill, permissionError);
+        }
+
+        // Analytics: log skill invocation
+        logSkillInvocation(skill, skillName, arguments);
 
         log.info("Executing skill: {} [{}] context={}", skill.name(), skill.source(), skill.context());
 
@@ -131,8 +159,7 @@ public class SkillTool implements Tool {
         // Check if skill should be forked (sub-agent) or inline
         if (!skill.isForked()) {
             // Inline execution: return the skill prompt for the current agent to follow
-            return "📋 Skill '" + skill.userFacingName() + "' loaded (inline mode).\n\n"
-                    + "Follow these instructions:\n\n" + skillPrompt;
+            return renderInlineResult(skill, skillPrompt);
         }
 
         // Forked execution: execute via agent factory (same as AgentTool)
@@ -150,10 +177,10 @@ public class SkillTool implements Tool {
         try {
             String result = agentFactory.apply(skillPrompt);
             log.info("Skill '{}' completed, result: {} chars", skill.name(), result.length());
-            return result;
+            return renderForkedResult(skill, result);
         } catch (Exception e) {
             log.debug("Skill execution failed", e);
-            return "Error executing skill '" + skill.name() + "': " + e.getMessage();
+            return renderError(skill, "Error executing skill '" + skill.name() + "': " + e.getMessage());
         }
     }
 
@@ -167,6 +194,139 @@ public class SkillTool implements Tool {
         String name = input != null ? (String) input.get("skill_name") : null;
         return name != null ? "Running skill: " + name + "..." : "Running skill...";
     }
+
+    // ==================== Permission Checking ====================
+
+    /**
+     * Check permissions for skill execution.
+     * Corresponds to TS SkillTool.checkPermissions().
+     *
+     * @return error message if denied, null if allowed
+     */
+    private String checkPermissions(Skill skill, String commandName, ToolContext context) {
+        PermissionRuleEngine engine = context.get(PERMISSION_ENGINE_KEY);
+        if (engine == null) return null; // No permission engine → allow
+
+        // Check permission using the tool name "Skill" and skill name as command
+        PermissionDecision decision = engine.evaluate("Skill",
+                Map.of("skill_name", commandName), false, context);
+
+        return switch (decision.behavior()) {
+            case DENY -> decision.reason() != null ? decision.reason() : "Skill execution blocked by permission rules";
+            case ASK -> null; // ASK = let it through (interactive confirm handled elsewhere)
+            default -> null;  // ALLOW
+        };
+    }
+
+    // ==================== UI Rendering ====================
+
+    /**
+     * Render result for inline skill execution.
+     * Corresponds to TS renderToolResultMessage() for inline skills.
+     */
+    private String renderInlineResult(Skill skill, String prompt) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("📋 Skill '").append(skill.userFacingName()).append("' loaded (inline mode).");
+
+        // Show tools count if restricted
+        if (skill.allowedTools() != null && !skill.allowedTools().isEmpty()) {
+            sb.append(" [").append(skill.allowedTools().size()).append(" tools allowed]");
+        }
+
+        // Show model if non-default
+        if (skill.model() != null) {
+            sb.append(" [model: ").append(skill.model()).append("]");
+        }
+
+        sb.append("\n\nFollow these instructions:\n\n").append(prompt);
+        return sb.toString();
+    }
+
+    /**
+     * Render result for forked skill execution.
+     * Corresponds to TS renderToolResultMessage() for forked skills — shows "Done".
+     */
+    private String renderForkedResult(Skill skill, String result) {
+        return result;
+    }
+
+    /**
+     * Render rejection message.
+     * Corresponds to TS renderToolUseRejectedMessage().
+     */
+    private String renderRejected(Skill skill, String reason) {
+        return "⛔ Skill '" + skill.userFacingName() + "' rejected: " + reason;
+    }
+
+    /**
+     * Render error message.
+     * Corresponds to TS renderToolUseErrorMessage().
+     */
+    private String renderError(Skill skill, String error) {
+        return "❌ " + error;
+    }
+
+    /**
+     * Render tool use message (for display during execution).
+     * Corresponds to TS renderToolUseMessage() — shows legacy /commands/ marker.
+     */
+    public static String renderToolUseMessage(Skill skill) {
+        if ("commands_DEPRECATED".equals(skill.loadedFrom())) {
+            return "/" + skill.name();
+        }
+        return skill.userFacingName();
+    }
+
+    /**
+     * Render progress message during skill execution.
+     * Corresponds to TS renderToolUseProgressMessage().
+     */
+    public static String renderProgressMessage(Skill skill) {
+        String msg = skill.progressMessage();
+        return msg != null ? msg : "running";
+    }
+
+    // ==================== Analytics ====================
+
+    /**
+     * Log skill invocation telemetry event.
+     * Corresponds to TS logEvent('tengu_skill_tool_invocation', ...).
+     */
+    private void logSkillInvocation(Skill skill, String commandName, String arguments) {
+        boolean isOfficial = SkillFilters.isOfficialMarketplace(skill);
+        String executionContext = skill.isForked() ? "fork" : "inline";
+
+        log.info("SKILL_INVOKED: name={}, source={}, loadedFrom={}, context={}, official={}, argsLen={}",
+                commandName, skill.source(), skill.loadedFrom(), executionContext,
+                isOfficial, arguments != null ? arguments.length() : 0);
+
+        logEvent("tengu_skill_tool_invocation", Map.of(
+                "command_name", sanitizeSkillName(commandName),
+                "execution_context", executionContext,
+                "skill_source", skill.source() != null ? skill.source() : "",
+                "skill_loaded_from", skill.loadedFrom() != null ? skill.loadedFrom() : "",
+                "is_official_marketplace", String.valueOf(isOfficial)
+        ));
+    }
+
+    /**
+     * Sanitize skill name for telemetry (remove PII).
+     */
+    private String sanitizeSkillName(String name) {
+        if (name == null) return "unknown";
+        // Replace user-specific paths with generic markers
+        return name.replaceAll("[^a-zA-Z0-9_:-]", "_");
+    }
+
+    /**
+     * Log a telemetry event (stub — integrates with existing TelemetryService if available).
+     */
+    private void logEvent(String eventName, Map<String, String> properties) {
+        // Log to SLF4J for now; when TelemetryService is wired, delegate there
+        log.debug("TELEMETRY: {} {}", eventName, properties);
+    }
+
+    // ==================== Prompt Building ====================
 
     /**
      * Build the full prompt for skill execution.

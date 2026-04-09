@@ -1,8 +1,10 @@
 package com.claudecode.config;
 
 import com.claudecode.command.CommandRegistry;
+import com.claudecode.context.AgentLoader;
 import com.claudecode.context.ClaudeMdLoader;
 import com.claudecode.context.GitContext;
+import com.claudecode.context.SkillChangeDetector;
 import com.claudecode.context.SkillLoader;
 import com.claudecode.context.SystemPromptBuilder;
 import com.claudecode.core.AgentLoop;
@@ -150,7 +152,17 @@ public class AppConfig {
     }
 
     @Bean
-    public String systemPrompt(ToolContext toolContext, SessionMemoryService sessionMemoryService) {
+    public AgentLoader agentLoader() {
+        Path projectDir = Path.of(System.getProperty("user.dir"));
+        AgentLoader loader = new AgentLoader(projectDir);
+        loader.loadAll();
+        log.info("Loaded {} agent definitions", loader.getAgents().size());
+        return loader;
+    }
+
+    @Bean
+    public String systemPrompt(ToolContext toolContext, SessionMemoryService sessionMemoryService,
+                               PermissionRuleEngine permissionRuleEngine, AgentLoader agentLoader) {
         Path projectDir = Path.of(System.getProperty("user.dir"));
 
         ClaudeMdLoader claudeLoader = new ClaudeMdLoader(projectDir);
@@ -163,8 +175,19 @@ public class AppConfig {
         // Inject SkillLoader into ToolContext for SkillTool
         toolContext.set(SkillTool.SKILL_LOADER_KEY, skillLoader);
 
+        // Inject PermissionRuleEngine into ToolContext for SkillTool permission checks
+        toolContext.set(SkillTool.PERMISSION_ENGINE_KEY, permissionRuleEngine);
+
+        // Inject AgentLoader into ToolContext for AgentTool
+        toolContext.set("AGENT_LOADER", agentLoader);
+
         // Inject SessionMemoryService into ToolContext
         toolContext.set("SESSION_MEMORY_SERVICE", sessionMemoryService);
+
+        // Start skill file watcher for hot reload
+        SkillChangeDetector changeDetector = new SkillChangeDetector(skillLoader, projectDir);
+        changeDetector.start();
+        toolContext.set("SKILL_CHANGE_DETECTOR", changeDetector);
 
         GitContext gitContext = new GitContext(projectDir).collect();
         String gitSummary = gitContext.buildSummary();
@@ -175,7 +198,6 @@ public class AppConfig {
         // Check if coordinator mode is enabled
         if (CoordinatorMode.isCoordinatorMode()) {
             log.info("Coordinator mode enabled via CLAUDE_CODE_COORDINATOR_MODE env var");
-            // Coordinator uses a specialized system prompt
             String coordinatorPrompt = CoordinatorMode.getCoordinatorSystemPrompt();
             String userContext = CoordinatorMode.getCoordinatorUserContext();
             return coordinatorPrompt + "\n\n" + userContext;
