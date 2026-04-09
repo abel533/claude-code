@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * Skills 技能加载器 —— 对应 claude-code/src/skills/loadSkillsDir.ts。
@@ -56,35 +58,175 @@ public class SkillLoader {
     /** 已加载文件的规范路径集合，用于 symlink 去重 */
     private final Set<Path> loadedCanonicalPaths = new HashSet<>();
 
+    // ==================== Memoization / Caching ====================
+
+    /** Whether skills have been loaded (memoization flag) */
+    private volatile boolean loaded = false;
+
+    /** Cached immutable skill list from last loadAll() */
+    private volatile List<Skill> cachedSkills = List.of();
+
+    /** Dynamic skills discovered from file paths during the session */
+    private final Map<String, Skill> dynamicSkills = new LinkedHashMap<>();
+
+    /** Conditional skills waiting for path activation */
+    private final Map<String, Skill> conditionalSkillsPending = new LinkedHashMap<>();
+
+    /** Names of skills that have been activated (survives cache clears within a session) */
+    private final Set<String> activatedConditionalSkillNames = new HashSet<>();
+
+    /** Listeners notified when skills are reloaded/changed */
+    private final List<Consumer<List<Skill>>> skillChangeListeners = new CopyOnWriteArrayList<>();
+
     public SkillLoader(Path projectDir) {
         this.projectDir = projectDir;
     }
 
     /**
-     * 扫描并加载所有技能文件
+     * 扫描并加载所有技能文件。
+     * 结果被缓存（memoized），后续调用返回缓存结果。
+     * 调用 {@link #clearCache()} 可强制重新加载。
      */
     public List<Skill> loadAll() {
-        skills.clear();
-        loadedCanonicalPaths.clear();
+        if (loaded) {
+            return cachedSkills;
+        }
 
-        // 0. 内置技能
-        skills.addAll(BundledSkills.getAll());
-        log.debug("Loaded {} bundled skills", BundledSkills.getAll().size());
+        synchronized (this) {
+            if (loaded) {
+                return cachedSkills;
+            }
 
-        // 1. 用户级技能（目录格式: skill-name/SKILL.md）
-        Path userSkillsDir = Path.of(System.getProperty("user.home"), ".claude", "skills");
-        loadFromSkillsDirectory(userSkillsDir, "user");
+            skills.clear();
+            loadedCanonicalPaths.clear();
 
-        // 2. 项目级技能（目录格式: skill-name/SKILL.md）
-        Path projectSkillsDir = projectDir.resolve(".claude").resolve("skills");
-        loadFromSkillsDirectory(projectSkillsDir, "project");
+            // 0. 内置技能
+            skills.addAll(BundledSkills.getAll());
+            log.debug("Loaded {} bundled skills", BundledSkills.getAll().size());
 
-        // 3. 命令目录（支持目录格式 + 单文件格式 + 递归子目录）
-        Path commandsDir = projectDir.resolve(".claude").resolve("commands");
-        loadFromCommandsDirectory(commandsDir, "command");
+            // --- Setting source checks (aligned with TS isSettingSourceEnabled) ---
+            boolean policyDisabled = isEnvTruthy("CLAUDE_CODE_DISABLE_POLICY_SKILLS");
+            boolean userSettingsEnabled = isSettingSourceEnabled("userSettings");
+            boolean projectSettingsEnabled = isSettingSourceEnabled("projectSettings");
 
-        log.debug("Loaded {} skills in total", skills.size());
-        return Collections.unmodifiableList(skills);
+            // 1. Managed/policy skills (policySettings source)
+            if (!policyDisabled) {
+                Path managedSkillsDir = getManagedSkillsPath();
+                if (managedSkillsDir != null) {
+                    loadFromSkillsDirectory(managedSkillsDir, "policySettings");
+                }
+            }
+
+            // 2. 用户级技能（目录格式: skill-name/SKILL.md）
+            if (userSettingsEnabled) {
+                Path userSkillsDir = Path.of(System.getProperty("user.home"), ".claude", "skills");
+                loadFromSkillsDirectory(userSkillsDir, "user");
+            }
+
+            // 3. 项目级技能（目录格式: skill-name/SKILL.md）
+            if (projectSettingsEnabled) {
+                Path projectSkillsDir = projectDir.resolve(".claude").resolve("skills");
+                loadFromSkillsDirectory(projectSkillsDir, "project");
+            }
+
+            // 4. 命令目录（支持目录格式 + 单文件格式 + 递归子目录）
+            Path commandsDir = projectDir.resolve(".claude").resolve("commands");
+            loadFromCommandsDirectory(commandsDir, "command");
+
+            // Separate conditional and unconditional skills
+            List<Skill> unconditional = new ArrayList<>();
+            for (Skill skill : skills) {
+                if (skill.isConditional() && !activatedConditionalSkillNames.contains(skill.name())) {
+                    conditionalSkillsPending.put(skill.name(), skill);
+                } else {
+                    unconditional.add(skill);
+                }
+            }
+
+            if (!conditionalSkillsPending.isEmpty()) {
+                log.debug("{} conditional skills stored (activated when matching files are touched)",
+                        conditionalSkillsPending.size());
+            }
+
+            log.debug("Loaded {} skills in total ({} unconditional, {} conditional)",
+                    skills.size(), unconditional.size(), conditionalSkillsPending.size());
+
+            cachedSkills = Collections.unmodifiableList(unconditional);
+            loaded = true;
+
+            return cachedSkills;
+        }
+    }
+
+    /**
+     * Clear the memoization cache. Next call to {@link #loadAll()} will rescan directories.
+     * Also clears conditional skills pending state.
+     * Corresponds to TS clearSkillCaches().
+     */
+    public void clearCache() {
+        synchronized (this) {
+            loaded = false;
+            cachedSkills = List.of();
+            skills.clear();
+            loadedCanonicalPaths.clear();
+            conditionalSkillsPending.clear();
+            activatedConditionalSkillNames.clear();
+            dynamicSkills.clear();
+        }
+        notifyListeners();
+    }
+
+    /**
+     * Register a listener that is notified when skills are reloaded.
+     * Corresponds to TS onDynamicSkillsLoaded().
+     */
+    public void onSkillsChanged(Consumer<List<Skill>> listener) {
+        skillChangeListeners.add(listener);
+    }
+
+    private void notifyListeners() {
+        List<Skill> current = getSkills();
+        for (Consumer<List<Skill>> listener : skillChangeListeners) {
+            try {
+                listener.accept(current);
+            } catch (Exception e) {
+                log.warn("Skill change listener failed: {}", e.getMessage());
+            }
+        }
+    }
+
+    // ==================== Setting Source Helpers ====================
+
+    /**
+     * Check if an environment variable is truthy (1, true, yes).
+     * Corresponds to TS isEnvTruthy().
+     */
+    private static boolean isEnvTruthy(String name) {
+        String val = System.getenv(name);
+        if (val == null) val = System.getProperty(name);
+        if (val == null) return false;
+        return "1".equals(val) || "true".equalsIgnoreCase(val) || "yes".equalsIgnoreCase(val);
+    }
+
+    /**
+     * Check if a setting source is enabled.
+     * Default: all sources enabled unless explicitly disabled via environment.
+     * Corresponds to TS isSettingSourceEnabled().
+     */
+    private static boolean isSettingSourceEnabled(String source) {
+        // CLAUDE_CODE_DISABLE_{SOURCE} → disables that source
+        String envKey = "CLAUDE_CODE_DISABLE_" + source.toUpperCase().replace("SETTINGS", "_SETTINGS");
+        return !isEnvTruthy(envKey);
+    }
+
+    /**
+     * Get managed/policy skills directory path (if configured).
+     */
+    private static Path getManagedSkillsPath() {
+        String managedPath = System.getenv("CLAUDE_CODE_MANAGED_PATH");
+        if (managedPath == null) managedPath = System.getProperty("claude.managed.path");
+        if (managedPath == null) return null;
+        return Path.of(managedPath, ".claude", "skills");
     }
 
     /**
@@ -277,7 +419,7 @@ public class SkillLoader {
             log.warn("Invalid shell '{}' in {}, ignoring (use 'bash' or 'powershell')", shell, path);
             shell = null;
         }
-        List<String> paths = fmStringList(fm, "paths");
+        List<String> paths = parseSkillPaths(fm);
         String argumentHint = fmString(fm, "argument-hint", null);
         List<String> arguments = fmStringList(fm, "arguments");
         String version = fmString(fm, "version", null);
@@ -405,6 +547,102 @@ public class SkillLoader {
         return "";
     }
 
+    // ==================== Paths Parsing (brace expansion) ====================
+
+    /**
+     * Parse and validate paths frontmatter field with brace expansion.
+     * Corresponds to TS parseSkillPaths() + splitPathInFrontmatter().
+     *
+     * @return parsed path patterns, or null if no paths / all match-all
+     */
+    private List<String> parseSkillPaths(Map<String, Object> fm) {
+        Object val = fm.get("paths");
+        if (val == null) return null;
+
+        List<String> raw = splitPathInFrontmatter(val);
+        List<String> patterns = raw.stream()
+                .map(p -> p.endsWith("/**") ? p.substring(0, p.length() - 3) : p)
+                .filter(p -> !p.isEmpty())
+                .toList();
+
+        // If all patterns are ** (match-all), treat as no paths
+        if (patterns.isEmpty() || patterns.stream().allMatch(p -> p.equals("**"))) {
+            return null;
+        }
+        return patterns;
+    }
+
+    /**
+     * Split a comma-separated string (or YAML list) and expand brace patterns.
+     * Commas inside braces are not treated as separators.
+     * Corresponds to TS splitPathInFrontmatter().
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> splitPathInFrontmatter(Object input) {
+        if (input instanceof List) {
+            return ((List<Object>) input).stream()
+                    .flatMap(item -> splitPathInFrontmatter(item).stream())
+                    .toList();
+        }
+        if (!(input instanceof String s)) {
+            return List.of();
+        }
+
+        // Split by comma while respecting braces
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int braceDepth = 0;
+
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '{') {
+                braceDepth++;
+                current.append(c);
+            } else if (c == '}') {
+                braceDepth--;
+                current.append(c);
+            } else if (c == ',' && braceDepth == 0) {
+                String trimmed = current.toString().strip();
+                if (!trimmed.isEmpty()) parts.add(trimmed);
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        String trimmed = current.toString().strip();
+        if (!trimmed.isEmpty()) parts.add(trimmed);
+
+        // Expand brace patterns
+        return parts.stream()
+                .filter(p -> !p.isEmpty())
+                .flatMap(p -> expandBraces(p).stream())
+                .toList();
+    }
+
+    /**
+     * Expand brace patterns in a glob string.
+     * e.g. "src/*.{ts,tsx}" → ["src/*.ts", "src/*.tsx"]
+     */
+    private List<String> expandBraces(String pattern) {
+        // Find the first brace group
+        int braceStart = pattern.indexOf('{');
+        if (braceStart < 0) return List.of(pattern);
+
+        int braceEnd = pattern.indexOf('}', braceStart);
+        if (braceEnd < 0) return List.of(pattern);
+
+        String prefix = pattern.substring(0, braceStart);
+        String alternatives = pattern.substring(braceStart + 1, braceEnd);
+        String suffix = pattern.substring(braceEnd + 1);
+
+        List<String> expanded = new ArrayList<>();
+        for (String alt : alternatives.split(",")) {
+            String combined = prefix + alt.strip() + suffix;
+            expanded.addAll(expandBraces(combined));
+        }
+        return expanded;
+    }
+
     // ==================== Gitignore 过滤 & Symlink 去重 ====================
 
     /**
@@ -447,32 +685,89 @@ public class SkillLoader {
     }
 
     /**
-     * 获取已加载的技能列表
+     * 获取已加载的技能列表（包含动态发现的技能）
      */
     public List<Skill> getSkills() {
-        return Collections.unmodifiableList(skills);
+        List<Skill> base = cachedSkills;
+        if (dynamicSkills.isEmpty()) {
+            return base;
+        }
+        List<Skill> combined = new ArrayList<>(base);
+        combined.addAll(dynamicSkills.values());
+        return Collections.unmodifiableList(combined);
     }
 
     /**
-     * 按名称查找技能（精确匹配，不区分大小写）
+     * 按名称查找技能（精确匹配，不区分大小写，搜索所有技能含动态）
      */
     public Optional<Skill> findByName(String name) {
-        return skills.stream()
+        return getSkills().stream()
                 .filter(s -> s.name().equalsIgnoreCase(name))
                 .findFirst();
     }
 
     /**
-     * 获取非条件技能（始终激活的技能）
+     * 获取非条件技能（始终激活的技能 + 已激活的动态技能）
      */
     public List<Skill> getUnconditionalSkills() {
-        return skills.stream()
+        return getSkills().stream()
                 .filter(s -> !s.isConditional())
                 .toList();
     }
 
     /**
-     * 获取匹配指定文件路径的条件技能。
+     * Get the number of pending conditional skills (for testing/debugging).
+     */
+    public int getConditionalSkillCount() {
+        return conditionalSkillsPending.size();
+    }
+
+    /**
+     * Activate conditional skills whose path patterns match the given file paths.
+     * Activated skills are moved to the dynamic skills map.
+     * Corresponds to TS activateConditionalSkillsForPaths().
+     *
+     * @param filePaths 当前操作的文件路径列表
+     * @return 新激活的技能名称列表
+     */
+    public List<String> activateConditionalSkillsForPaths(List<String> filePaths) {
+        if (filePaths == null || filePaths.isEmpty() || conditionalSkillsPending.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> activated = new ArrayList<>();
+        Iterator<Map.Entry<String, Skill>> it = conditionalSkillsPending.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, Skill> entry = it.next();
+            Skill skill = entry.getValue();
+            if (skill.paths() == null) continue;
+
+            for (String pattern : skill.paths()) {
+                for (String filePath : filePaths) {
+                    String relative = projectDir != null
+                            ? projectDir.relativize(Path.of(filePath).toAbsolutePath()).toString().replace('\\', '/')
+                            : filePath.replace('\\', '/');
+                    if (matchGlob(pattern, relative)) {
+                        dynamicSkills.put(skill.name(), skill);
+                        activatedConditionalSkillNames.add(skill.name());
+                        activated.add(skill.name());
+                        it.remove();
+                        log.debug("Activated conditional skill '{}' (matched path: {})", skill.name(), relative);
+                        break;
+                    }
+                }
+                if (activated.contains(entry.getKey())) break;
+            }
+        }
+
+        if (!activated.isEmpty()) {
+            notifyListeners();
+        }
+        return activated;
+    }
+
+    /**
+     * 获取匹配指定文件路径的条件技能（不修改状态，仅查询）。
      * 对应 TS discoverSkillDirsForPaths()。
      *
      * @param filePaths 当前编辑的文件路径列表
@@ -481,9 +776,13 @@ public class SkillLoader {
     public List<Skill> getConditionalSkillsForPaths(List<String> filePaths) {
         if (filePaths == null || filePaths.isEmpty()) return List.of();
 
-        return skills.stream()
-                .filter(Skill::isConditional)
+        // Search both pending conditional skills and all loaded conditional skills
+        List<Skill> allConditional = new ArrayList<>(conditionalSkillsPending.values());
+        allConditional.addAll(getSkills().stream().filter(Skill::isConditional).toList());
+
+        return allConditional.stream()
                 .filter(skill -> {
+                    if (skill.paths() == null) return false;
                     for (String pattern : skill.paths()) {
                         for (String filePath : filePaths) {
                             if (matchGlob(pattern, filePath)) {
