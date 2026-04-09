@@ -45,6 +45,9 @@ public class ClaudeCodeRunner implements CommandLineRunner {
 
         // 检查是否强制使用旧模式
         String tuiMode = System.getenv("CLAUDE_CODE_TUI");
+        if (tuiMode == null) {
+            tuiMode = System.getProperty("CLAUDE_CODE_TUI");
+        }
         if ("legacy".equalsIgnoreCase(tuiMode)) {
             log.info("Legacy TUI mode requested via CLAUDE_CODE_TUI=legacy");
             replSession.start();
